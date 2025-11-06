@@ -23,6 +23,7 @@ class IntentRequest:
     utterance: str
     project_id: str | None = None
     notes: str | None = None
+    artifact_type: str | None = None
     role_requirements: dict[str, RoleRequirement] = field(default_factory=dict)
 
 

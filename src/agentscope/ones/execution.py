@@ -14,6 +14,8 @@ from .intent import (
 from .kpi import KPIRecord, KPITracker
 from .memory import MemoryEntry, MemoryPool, ProjectDescriptor, ProjectPool, ResourceLibrary
 from .task_graph import TaskGraphBuilder
+from .msghub import MsgHubBroadcaster, RoundUpdate
+from .artifacts import ArtifactDeliveryManager, ArtifactDeliveryResult
 import shortuuid
 
 
@@ -24,6 +26,7 @@ class ExecutionReport:
     kpi: KPIRecord
     task_status: dict[str, str]
     plan: StrategyPlan
+    deliverable: ArtifactDeliveryResult | None = None
 
 
 class ExecutionLoop:
@@ -36,7 +39,8 @@ class ExecutionLoop:
         orchestrator: AssistantOrchestrator,
         task_graph_builder: TaskGraphBuilder,
         kpi_tracker: KPITracker,
-        msg_hub_factory: Callable[..., object] | None = None,
+        msg_hub_factory: Callable[[str], MsgHubBroadcaster] | None = None,
+        delivery_manager: ArtifactDeliveryManager | None = None,
         max_rounds: int = 3,
     ) -> None:
         self.project_pool = project_pool
@@ -46,6 +50,7 @@ class ExecutionLoop:
         self.task_graph_builder = task_graph_builder
         self.kpi_tracker = kpi_tracker
         self.msg_hub_factory = msg_hub_factory
+        self.delivery_manager = delivery_manager
         self.max_rounds = max_rounds
 
     def _persist_intent(self, intent: IntentRequest) -> None:
@@ -128,13 +133,31 @@ class ExecutionLoop:
             progressive_bonus = 0.0
         return max(0.0, min(1.0, base_score + progressive_bonus))
 
-    def _broadcast_progress(self, project_id: str, summary: str) -> None:
+    def _broadcast_progress(
+        self,
+        *,
+        project_id: str,
+        round_index: int,
+        summary: str,
+        status: dict[str, str],
+    ) -> None:
         if self.msg_hub_factory is None:
             return
-        hub = self.msg_hub_factory(project_id=project_id)
-        broadcast = getattr(hub, "broadcast", None)
-        if callable(broadcast):
-            broadcast(summary)
+        hub = self.msg_hub_factory(project_id)
+        update = RoundUpdate(
+            project_id=project_id,
+            round_index=round_index,
+            summary=summary,
+            status=status,
+        )
+        hub.broadcast(update)
+
+    @staticmethod
+    def _plan_summary(plan: StrategyPlan) -> str:
+        names = []
+        for node_id, ranking in plan.rankings.items():
+            names.append(f"{node_id}->{ranking.profile.name}")
+        return "; ".join(names)
 
     def run_cycle(
         self,
@@ -158,6 +181,7 @@ class ExecutionLoop:
         accepted = False
         task_status: Dict[str, str] = {}
         observed_metrics: Dict[str, float] = {}
+        deliverable: ArtifactDeliveryResult | None = None
 
         for round_index in range(1, self.max_rounds + 1):
             for node_id in graph.topological_order():
@@ -182,7 +206,9 @@ class ExecutionLoop:
             )
             self._broadcast_progress(
                 project_id=project_id,
+                round_index=round_index,
                 summary=f"Round {round_index} status: {task_status}",
+                status=task_status,
             )
 
             accepted = self.orchestrator.evaluate_acceptance(plan, observed_metrics)
@@ -206,10 +232,20 @@ class ExecutionLoop:
             observed_time=observed_time,
         )
 
+        if accepted and self.delivery_manager is not None:
+            artifact_type = intent.artifact_type or "web"
+            deliverable = self.delivery_manager.deliver(
+                artifact_type=artifact_type,
+                project_id=project_id,
+                plan_summary=self._plan_summary(plan),
+                task_status=task_status,
+            )
+
         return ExecutionReport(
             project_id=project_id,
             accepted=accepted,
             kpi=kpi_record,
             task_status=task_status,
             plan=plan,
+            deliverable=deliverable,
         )

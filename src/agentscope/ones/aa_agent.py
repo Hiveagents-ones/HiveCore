@@ -136,6 +136,10 @@ class AASystemAgent(AgentBase):
                 else "未分配"
             )
             lines.append(f"- {node_id}: {status} -> {agent_name}")
+        if report.deliverable:
+            lines.append(
+                f"交付结果: {report.deliverable.artifact_type} @ {report.deliverable.uri}",
+            )
 
         content = "\n".join(lines)
         metadata = {
@@ -143,6 +147,12 @@ class AASystemAgent(AgentBase):
             "project_id": report.project_id,
             "task_status": report.task_status,
         }
+        if report.deliverable:
+            metadata["deliverable"] = {
+                "type": report.deliverable.artifact_type,
+                "uri": report.deliverable.uri,
+                "metadata": report.deliverable.metadata,
+            }
         response = Msg(
             name=self.name,
             role="assistant",

@@ -65,9 +65,9 @@ AgentScope 已具备 Agent 定义与通信的基础能力，而 **HiveCore** 专
 | KPI Tracker & 交付汇报                       |
 +---------------------------------------------+
 
-[计划中 / 部分实现]
-- 基于 MsgHub 的 Agent 广播编排
-- 面向制品的交付适配器（部署、媒体打包等）
+[下一步增强]
+- 将广播接口与实时 MsgHub 参与者桥接
+- 交付适配器接入真实部署 / 存储基础设施
 ```
 
 HiveCore 添加的 AA、规划/验收、项目上下文与 MsgHub 等组件构建在 AgentScope 原生 Agent 抽象与消息通道之上。运行时与沙箱依旧采用 AgentScope 自带的 runtime，HiveCore 负责编排策略、记忆与交付逻辑，而非替换底层 AS 执行环境。图中标注 “计划中” 的组件目前仅有桩代码，仍需补充真实的存储或调度逻辑。
@@ -81,13 +81,15 @@ HiveCore 添加的 AA、规划/验收、项目上下文与 MsgHub 等组件构�
 - `AAMemoryStore` 持久化保存用户 Prompt、知识条目与完整对话记录，可在多轮会话中复用。
 - SystemRegistry + UserProfile 映射并可基于记忆库自动装配用户绑定关系。
 - ExecutionLoop 自动注册项目、写入 `MemoryPool` 的轮次摘要，供新增 Agent 即时读取。
+- 轮次摘要可通过 `MsgHubBroadcaster` 接口推送给订阅方（面板/在线 Agent）。
 - ≥90% 验收阈值的轮次交付：每轮记录 KPI + 任务状态，未达标会自动重规划并重试。
+- Web/媒体交付适配器（`WebDeployAdapter`, `MediaPackageAdapter`）在验收通过时生成可访问的 URL / URI，并由 AA 回传给用户。
 - KPI 记录能力，可在 AA 回复中输出成本/时长对比。
 
 **进行中**
-- 将轮次摘要与实时 MsgHub 广播联动，供在线 Agent 共享上下文。
+- 将广播接口与运行时 MsgHub 参与者打通，实现真实 Agent 间广播。
 - 与 AgentScope runtime 沙箱更深度的联动：资源策略、执行元数据、审计挂钩。
-- 面向制品的交付适配器（自动部署站点、媒体/文件打包），由 AA 统一触发。
+- 交付适配器对接真实部署管道或对象存储，而非示例 URI。
 
 **尚未开始**
 - 规划器可观测性面板 + 插件 API，方便第三方扩展。
@@ -97,13 +99,13 @@ HiveCore 添加的 AA、规划/验收、项目上下文与 MsgHub 等组件构�
 
 ## 🔁 用户流程
 
-以下为目标流程（现已部分实现：持久记忆 + 轮次验收）：
+以下为目标流程（现已部分实现：持久记忆 + 轮次验收 + 交付适配器）：
 
 1. **AssistantAgent 面向用户长期存在**：AA 通过 `AAMemoryStore` 将 Prompt、知识、完整对话落盘，进程重启也能延续上下文。  
-2. **创建项目时初始化共享上下文**：ExecutionLoop 自动注册项目，并把每轮摘要写入 `MemoryPool`（MsgHub 在线广播仍在开发中）。  
+2. **创建项目时初始化共享上下文**：ExecutionLoop 自动注册项目，并把每轮摘要写入 `MemoryPool`，同时通过广播接口推给订阅者（即将对接实时 MsgHub）。  
 3. **AA 与用户循环打磨需求**：已在规划层实现，AA 通过 resolver 解析需求，orchestrator 从 AgentScope Agent 库评估并组建团队，同时可利用记忆库中的偏好。  
 4. **按轮次交付并校验**：已实现，ExecutionLoop 记录每轮 KPI 与任务状态，按 ≥90% 阈值验收，未通过则自动 replanning + 再执行。  
-5. **交付结果即所得**：规划中；将通过交付适配器实现自动部署或文件打包。  
+5. **交付结果即所得**：Web/媒体交付适配器已经能给出可访问的 URL / URI；下一步会接入真实部署与包管理。  
 
 ---
 

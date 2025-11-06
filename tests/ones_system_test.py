@@ -24,6 +24,9 @@ from agentscope.ones import (
     build_summary,
     OpenQuestionTracker,
     CollaborationLayer,
+    ArtifactDeliveryManager,
+    WebDeployAdapter,
+    InMemoryMsgHub,
 )
 
 
@@ -143,6 +146,8 @@ def test_round_persistence_and_replan(tmp_path) -> None:
     project_pool = ProjectPool()
     memory_pool = MemoryPool()
     resource_library = ResourceLibrary()
+    hub = InMemoryMsgHub()
+    delivery_manager = ArtifactDeliveryManager([WebDeployAdapter(base_domain="example.com")])
     executor = ExecutionLoop(
         project_pool=project_pool,
         memory_pool=memory_pool,
@@ -151,6 +156,8 @@ def test_round_persistence_and_replan(tmp_path) -> None:
         task_graph_builder=TaskGraphBuilder(),
         kpi_tracker=KPITracker(target_reduction=0.9),
         max_rounds=2,
+        msg_hub_factory=lambda _: hub,
+        delivery_manager=delivery_manager,
     )
 
     report = executor.run_cycle(
@@ -167,3 +174,6 @@ def test_round_persistence_and_replan(tmp_path) -> None:
     assert project_id is not None
     round_entries = memory_pool.query_by_tag(f"project:{project_id}")
     assert len(round_entries) == 2
+    assert len(hub.updates) == 2
+    assert report.deliverable is not None
+    assert report.deliverable.artifact_type == "web"
