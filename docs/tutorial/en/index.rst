@@ -24,6 +24,7 @@ Welcome to AgentScope's documentation!
    tutorial/workflow_concurrent_agents
    tutorial/workflow_routing
    tutorial/workflow_handoffs
+   tutorial/workflow_agent_selection
 
 .. toctree::
    :maxdepth: 1

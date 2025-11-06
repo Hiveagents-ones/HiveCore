@@ -19,6 +19,8 @@ from . import evaluate
 from . import pipeline
 from . import tracing
 from . import rag
+from . import aa
+from . import ones
 
 from ._logging import (
     logger,
@@ -126,6 +128,8 @@ __all__ = [
     "pipeline",
     "tracing",
     "rag",
+    "aa",
+    "ones",
     # functions
     "init",
     "setup_logger",

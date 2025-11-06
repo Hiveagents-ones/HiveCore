@@ -142,3 +142,8 @@ docs/tutorial/**/doctrees/
 docs/tutorial/**/.doctrees/
 *.buildinfo
 *.pickle
+
+# HiveCore / One·s runtime artifacts
+hivecore_local/
+hivecore_reports/
+*.hivecore.log
