@@ -62,7 +62,21 @@ The long-term goal: **make AgentScope a complete, self-evolving agent runtime st
     Round delivery snapshot --> Planner --> AA auto-QA (>=90%?). If fail, replan; else AA ships result to user.
 ```
 
-HiveCore layers (AA, planner/evaluator, project context, MsgHub) sit on top of AgentScope’s core agent abstractions (agent library, messaging, tool APIs), so we stay AS-compatible while adding persistent assistants and project-scoped collaboration.
+HiveCore layers (AA, planner/evaluator, project context, MsgHub) sit on top of AgentScope’s core agent abstractions (agent library, messaging, tool APIs). The runtime and sandbox execution still rely on the AgentScope runtime; HiveCore orchestrates policies, memory, and delivery logic without replacing the underlying AS environment.
+
+---
+
+## 🛠 Development Path
+
+**Completed**
+- AA foundation with persistent user memory, prompt, and private knowledge base
+- Project context initialization (memory + KB + MsgHub) so new agents inherit current progress instantly
+- Round-based planner/evaluator enforcing ≥90% delivery quality and auto replanning loops
+
+**In Progress**
+- Deeper integration with the AgentScope runtime sandbox (resource policies, execution metadata, audit hooks)
+- Artifact-specific delivery adapters (auto web deployment, media/file packaging) driven by AA
+- Plugin-friendly planner APIs and observability dashboards for runtime insight
 
 ---
 
