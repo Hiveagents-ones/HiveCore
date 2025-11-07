@@ -108,15 +108,16 @@ class ExecutionLoop:
         )
         self.memory_pool.save(entry)
 
-    def _compute_quality_score(
+    def _compute_metric_snapshot(
         self,
         *,
         baseline_cost: float,
         observed_cost: float,
         baseline_time: float,
         observed_time: float,
+        acceptance: AcceptanceCriteria,
         round_index: int,
-    ) -> float:
+    ) -> tuple[float, dict[str, float], dict[str, bool]]:
         def ratio(baseline: float, observed: float) -> float:
             if observed <= 0:
                 return 1.0
@@ -124,14 +125,30 @@ class ExecutionLoop:
                 return 0.0
             return min(1.0, baseline / observed)
 
-        cost_component = ratio(baseline_cost, observed_cost)
-        time_component = ratio(baseline_time, observed_time)
-        base_score = (cost_component + time_component) / 2
-        if self.max_rounds > 1:
-            progressive_bonus = ((round_index - 1) / (self.max_rounds - 1)) * 0.5
-        else:
-            progressive_bonus = 0.0
-        return max(0.0, min(1.0, base_score + progressive_bonus))
+        def metric_value(name: str) -> float:
+            lowered = name.lower()
+            cost_component = ratio(baseline_cost, observed_cost)
+            time_component = ratio(baseline_time, observed_time)
+            base_score = (cost_component + time_component) / 2
+            if "cost" in lowered:
+                value = cost_component
+            elif "time" in lowered or "speed" in lowered:
+                value = time_component
+            else:
+                value = base_score
+            if self.max_rounds > 1:
+                progressive_bonus = ((round_index - 1) / (self.max_rounds - 1)) * 0.5
+                value += progressive_bonus
+            return max(0.0, min(1.0, value))
+
+        metrics = acceptance.metrics or {"quality": 0.9}
+        values: dict[str, float] = {name: metric_value(name) for name in metrics}
+        passes: dict[str, bool] = {
+            name: values[name] >= target for name, target in metrics.items()
+        }
+        total = max(len(metrics), 1)
+        pass_ratio = sum(1 for ok in passes.values() if ok) / total
+        return pass_ratio, values, passes
 
     def _broadcast_progress(
         self,
@@ -189,14 +206,20 @@ class ExecutionLoop:
                 graph.mark_completed(node_id)
 
             task_status = {node.node_id: node.status.value for node in graph.nodes()}
-            observed_quality = self._compute_quality_score(
+            pass_ratio, metric_values, metric_passes = self._compute_metric_snapshot(
                 baseline_cost=baseline_cost,
                 observed_cost=observed_cost,
                 baseline_time=baseline_time,
                 observed_time=observed_time,
+                acceptance=acceptance,
                 round_index=round_index,
             )
-            observed_metrics = {"quality": observed_quality}
+            observed_metrics = {
+                **metric_values,
+                "pass_ratio": pass_ratio,
+                "passed": sum(metric_passes.values()),
+                "total": max(len(metric_passes), 1),
+            }
             self._persist_round_summary(
                 project_id=project_id,
                 round_index=round_index,
