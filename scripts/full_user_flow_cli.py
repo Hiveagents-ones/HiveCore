@@ -16,8 +16,10 @@ import argparse
 import asyncio
 import json
 import os
+import re
 import textwrap
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Sequence
 
@@ -134,6 +136,39 @@ async def gather_spec(
         else:
             user_reply = input("用户: ").strip() or "请继续完善。"
         conversation.append({"role": "user", "content": user_reply})
+
+
+async def enrich_acceptance_criteria(llm: OpenAIChatModel, spec: dict) -> None:
+    """Ensure acceptance criteria cover multiple angles."""
+    min_count = 4
+    acceptance = spec.setdefault("acceptance", {})
+    criteria = acceptance.get("criteria") or []
+    if len(criteria) >= min_count:
+        return
+    prompt = textwrap.dedent(
+        f"""
+        需求规格:
+        {json.dumps(spec, ensure_ascii=False, indent=2)}
+
+        请输出 JSON:
+        {{
+          "criteria": [
+            {{"name":"...", "description":"...", "target":0.9}},
+            ...
+          ]
+        }}
+        至少 {min_count} 条，必须覆盖内容深度、视觉布局、交互/报名流程、CTA与转化、跨设备体验等不同维度。
+        """
+    )
+    raw = await call_llm_text(
+        llm,
+        "你是验收官，负责补齐细粒度验收标准。",
+        prompt,
+        temperature=0.2,
+    )
+    data = json.loads(extract_json_block(raw))
+    acceptance["criteria"] = data.get("criteria", criteria)
+    acceptance.setdefault("overall_target", 0.9)
 
 
 # ---------------------------------------------------------------------------
@@ -341,7 +376,96 @@ async def run_collaboration(
         "final_pass_ratio": rounds[-1]["pass_ratio"],
         "final_deliverable": rounds[-1]["developer"],
         "final_qa": rounds[-1]["qa"],
+        "designer_output": rounds[-1]["designer"],
     }
+
+
+# ---------------------------------------------------------------------------
+# 静态交付物（本地网页）
+# ---------------------------------------------------------------------------
+
+DELIVERABLE_DIR = Path("deliverables")
+
+
+def sanitize_filename(name: str) -> str:
+    return re.sub(r"[^A-Za-z0-9_-]+", "_", name) or "project"
+
+
+def write_static_page(
+    spec: dict,
+    designer_notes: str,
+    developer_plan: str,
+) -> Path:
+    DELIVERABLE_DIR.mkdir(parents=True, exist_ok=True)
+    slug = sanitize_filename(spec.get("project_name", "project"))
+    filename = f"{slug}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
+    path = DELIVERABLE_DIR / filename
+    html = f"""<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <title>{spec.get('project_name', 'HiveCore Project')}</title>
+  <style>
+    body {{
+      font-family: 'Helvetica Neue', Arial, sans-serif;
+      margin: 0;
+      padding: 48px;
+      background: #050816;
+      color: #f4f7ff;
+      line-height: 1.7;
+    }}
+    .hero {{
+      text-align: center;
+      padding: 60px 20px;
+      border-radius: 20px;
+      background: linear-gradient(135deg, #1d2b53, #111826);
+      box-shadow: 0 30px 60px rgba(0,0,0,0.45);
+      margin-bottom: 48px;
+    }}
+    section {{
+      margin-bottom: 40px;
+      background: rgba(255,255,255,0.02);
+      border-radius: 18px;
+      padding: 24px;
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,0.05);
+      backdrop-filter: blur(10px);
+    }}
+    h1 {{ font-size: 2.6rem; margin-bottom: 12px; }}
+    h2 {{
+      margin-top: 0;
+      border-left: 4px solid #38bdf8;
+      padding-left: 12px;
+    }}
+    pre {{
+      white-space: pre-wrap;
+      background: rgba(15,23,42,0.7);
+      border-radius: 14px;
+      padding: 18px;
+      overflow:auto;
+    }}
+  </style>
+</head>
+<body>
+  <div class="hero">
+    <h1>{spec.get('project_name', 'HiveCore Project')}</h1>
+    <p>{spec.get('summary', '')}</p>
+  </div>
+  <section>
+    <h2>文案与体验结构</h2>
+    <pre>{designer_notes}</pre>
+  </section>
+  <section>
+    <h2>实现计划</h2>
+    <pre>{developer_plan}</pre>
+  </section>
+  <footer>
+    <p>本页面由 HiveCore CLI 自动生成，作为本地交付预览。</p>
+  </footer>
+</body>
+</html>
+"""
+    path.write_text(html, encoding="utf-8")
+    return path.resolve()
 
 
 # ---------------------------------------------------------------------------
@@ -358,10 +482,17 @@ async def run_cli(initial_requirement: str, scripted_answers: list[str] | None =
     )
 
     spec = await gather_spec(llm, initial_requirement, scripted_answers)
+    await enrich_acceptance_criteria(llm, spec)
     result = await run_collaboration(llm, spec)
 
     print("\n========== 最终交付 ==========")
     print(result["final_deliverable"])
+    page_path = write_static_page(
+        spec,
+        result["designer_output"],
+        result["final_deliverable"],
+    )
+    print(f"\n本地预览: file://{page_path}")
 
     final_qa = result["final_qa"]
     criteria = final_qa.get("criteria", [])
