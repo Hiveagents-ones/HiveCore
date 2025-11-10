@@ -329,15 +329,27 @@ def resolve_artifact_type(requirement: dict[str, Any]) -> str:
 # Agent 角色
 # ---------------------------------------------------------------------------
 async def design_requirement(
-    llm: OpenAIChatModel,
+    llm,
     requirement: dict[str, Any],
     feedback: str,
+    passed_ids: set[str],
+    failed_criteria: list[dict[str, Any]],
+    prev_blueprint: dict[str, Any] | None,
 ) -> dict[str, Any]:
     artifact_type = resolve_artifact_type(requirement)
     prompt = textwrap.dedent(
         f"""
         需求对象:
         {json.dumps(requirement, ensure_ascii=False, indent=2)}
+
+        已通过的标准:
+        {sorted(passed_ids) if passed_ids else "无"}
+
+        仍需改进的标准:
+        {json.dumps(failed_criteria, ensure_ascii=False, indent=2) if failed_criteria else "无"}
+
+        上一版 Blueprint (如有):
+        {json.dumps(prev_blueprint, ensure_ascii=False, indent=2) if prev_blueprint else "无"}
 
         之前 QA 的反馈 (如有):
         {feedback or "无"}
@@ -371,10 +383,13 @@ async def design_requirement(
 
 
 async def implement_requirement(
-    llm: OpenAIChatModel,
+    llm,
     requirement: dict[str, Any],
     blueprint: dict[str, Any],
     feedback: str,
+    passed_ids: set[str],
+    failed_criteria: list[dict[str, Any]],
+    previous_artifact: str,
 ) -> dict[str, Any]:
     artifact_type = blueprint.get("artifact_spec", {}).get("format") or resolve_artifact_type(requirement)
     prompt = textwrap.dedent(
@@ -384,6 +399,15 @@ async def implement_requirement(
 
         Blueprint:
         {json.dumps(blueprint, ensure_ascii=False, indent=2)}
+
+        已通过的标准:
+        {sorted(passed_ids) if passed_ids else "无"}
+
+        需修复的标准:
+        {json.dumps(failed_criteria, ensure_ascii=False, indent=2) if failed_criteria else "无"}
+
+        上一版交付片段:
+        {previous_artifact[:1200] if previous_artifact else "无"}
 
         QA 反馈:
         {feedback or "无"}
@@ -475,6 +499,17 @@ async def run_execution(llm: OpenAIChatModel, spec: dict[str, Any], max_rounds: 
     requirements = spec.get("requirements", [])
     overall_target = spec.get("acceptance", {}).get("overall_target", 0.95)
     feedback_map = {req["id"]: "" for req in requirements}
+    req_state = {
+        req["id"]: {
+            "passed": set(),
+            "artifact": "",
+            "summary": "",
+            "feedback": "",
+            "blueprint": None,
+            "path": None,
+        }
+        for req in requirements
+    }
     rounds: list[dict[str, Any]] = []
     final_paths: dict[str, Path] = {}
 
@@ -486,10 +521,49 @@ async def run_execution(llm: OpenAIChatModel, spec: dict[str, Any], max_rounds: 
         for requirement in requirements:
             rid = requirement["id"]
             criteria = criteria_for_requirement(spec, rid)
+            for idx, item in enumerate(criteria, 1):
+                item.setdefault("id", f"{rid}.{idx}")
 
-            blueprint = await design_requirement(llm, requirement, feedback_map[rid])
+            state = req_state[rid]
+            passed_ids = state["passed"]
+            failed_criteria = [c for c in criteria if c.get("id") not in passed_ids]
+
+            if not failed_criteria:
+                print(f"- {rid} 已全部通过，沿用上一轮成果")
+                requirement_pass_flags.append(True)
+                round_entry["results"].append(
+                    {
+                        "requirement_id": rid,
+                        "blueprint": state.get("blueprint"),
+                        "implementation": {
+                            "summary": state.get("summary", "上一轮产物"),
+                            "path": str(state.get("path") or ""),
+                        },
+                        "qa": {"criteria": []},
+                        "pass_ratio": 1.0,
+                    },
+                )
+                final_paths[rid] = state.get("path") or final_paths.get(rid)
+                continue
+
+            blueprint = await design_requirement(
+                llm,
+                requirement,
+                feedback_map[rid],
+                passed_ids,
+                failed_criteria,
+                state.get("blueprint"),
+            )
             print(f"\n[{rid}] Blueprint 摘要：{blueprint.get('deliverable_pitch', '')}")
-            impl = await implement_requirement(llm, requirement, blueprint, feedback_map[rid])
+            impl = await implement_requirement(
+                llm,
+                requirement,
+                blueprint,
+                feedback_map[rid],
+                passed_ids,
+                failed_criteria,
+                state.get("artifact", ""),
+            )
             print(f"[{rid}] Developer Summary：{impl.get('summary', '')}")
 
             DELIVERABLE_DIR.mkdir(parents=True, exist_ok=True)
@@ -500,6 +574,14 @@ async def run_execution(llm: OpenAIChatModel, spec: dict[str, Any], max_rounds: 
                 artifact_content = json.dumps(artifact_content, ensure_ascii=False, indent=2)
             path.write_text(str(artifact_content), encoding="utf-8")
             final_paths[rid] = path
+            state.update(
+                {
+                    "artifact": str(artifact_content),
+                    "path": path,
+                    "summary": impl.get("summary", ""),
+                    "blueprint": blueprint,
+                },
+            )
 
             qa_report = await qa_requirement(
                 llm=llm,
@@ -516,11 +598,17 @@ async def run_execution(llm: OpenAIChatModel, spec: dict[str, Any], max_rounds: 
             total = max(len(crit), 1)
             pass_ratio = passed / total
             requirement_pass_flags.append(pass_ratio >= overall_target and passed == total)
+            for item in crit:
+                if item.get("pass") and item.get("id"):
+                    state["passed"].add(item["id"])
 
             if pass_ratio >= overall_target and passed == total:
                 feedback_map[rid] = ""
+                state["feedback"] = ""
             else:
-                feedback_map[rid] = qa_report.get("improvements", "")
+                feedback = qa_report.get("improvements", "")
+                feedback_map[rid] = feedback
+                state["feedback"] = feedback
 
             round_entry["results"].append(
                 {
