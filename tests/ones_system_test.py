@@ -1,8 +1,12 @@
 # -*- coding: utf-8 -*-
 """Integration style tests for the One·s modules."""
 from agentscope.aa import AgentCapabilities, AgentProfile, StaticScore, RoleRequirement
+from agentscope.agent import AgentBase
+from agentscope.message import Msg
+from agentscope.pipeline import MsgHub
 from agentscope.ones import (
     AcceptanceCriteria,
+    AgentScopeMsgHubBroadcaster,
     AssistantOrchestrator,
     DeliveryStack,
     ExecutionLoop,
@@ -11,6 +15,7 @@ from agentscope.ones import (
     IntentRequest,
     KPITracker,
     MemoryPool,
+    ProjectMsgHubRegistry,
     ProjectDescriptor,
     ProjectPool,
     ResourceLibrary,
@@ -27,6 +32,7 @@ from agentscope.ones import (
     ArtifactDeliveryManager,
     WebDeployAdapter,
     InMemoryMsgHub,
+    RoundUpdate,
 )
 
 
@@ -177,3 +183,56 @@ def test_round_persistence_and_replan(tmp_path) -> None:
     assert len(hub.updates) == 2
     assert report.deliverable is not None
     assert report.deliverable.artifact_type == "web"
+
+
+class _RecorderAgent(AgentBase):
+    """Minimal agent to capture MsgHub broadcasts."""
+
+    def __init__(self, agent_id: str) -> None:
+        super().__init__()
+        self.id = agent_id
+        self.name = agent_id
+        self.observed_messages: list[Msg] = []
+
+    async def observe(self, msg: Msg | list[Msg] | None) -> None:  # type: ignore[override]
+        if msg is None:
+            return
+        if isinstance(msg, list):
+            self.observed_messages.extend(msg)
+        else:
+            self.observed_messages.append(msg)
+
+    async def reply(self, *args, **kwargs) -> Msg:  # type: ignore[override]
+        return Msg(name=self.name, role="assistant", content="noop")
+
+
+def test_agentscope_msghub_broadcaster_relays_updates() -> None:
+    observers = [_RecorderAgent("dash-1"), _RecorderAgent("dash-2")]
+    hub = MsgHub(participants=observers, enable_auto_broadcast=False)
+    broadcaster = AgentScopeMsgHubBroadcaster(hub=hub, sender_name="hivecore")
+    update = RoundUpdate(
+        project_id="proj-test",
+        round_index=1,
+        summary="Round 1 status: {'task-1': 'completed'}",
+        status={"task-1": "completed"},
+    )
+
+    broadcaster.broadcast(update)
+
+    for agent in observers:
+        assert len(agent.observed_messages) == 1
+        delivered = agent.observed_messages[0]
+        assert delivered.metadata["project_id"] == "proj-test"
+        assert delivered.metadata["round_index"] == 1
+
+
+def test_project_msghub_registry_provides_defaults() -> None:
+    registry = ProjectMsgHubRegistry()
+    default_hub = registry("proj-a")
+    assert isinstance(default_hub, InMemoryMsgHub)
+    # same project returns cached instance
+    assert registry("proj-a") is default_hub
+
+    custom = InMemoryMsgHub()
+    registry.bind("proj-b", custom)
+    assert registry("proj-b") is custom

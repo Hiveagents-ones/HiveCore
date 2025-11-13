@@ -66,7 +66,6 @@ The long-term goal: **make AgentScope a complete, self-evolving agent runtime st
 +---------------------------------------------+
 
 [Next enhancements]
-- Bridge broadcaster interface to live MsgHub participants
 - Wire artifact adapters to real infra (deployments, media packaging)
 ```
 
@@ -81,13 +80,12 @@ HiveCore layers (AA, planner/evaluator, project context, MsgHub) sit on top of A
 - Persistent AA memory store (`AAMemoryStore`) that records prompts, knowledge entries, and full conversation logs per user.
 - SystemRegistry + UserProfile bookkeeping to bind AA instances to users (and auto-bootstrap from the memory store).
 - Project-level context snapshots via `ProjectPool` + `MemoryPool` plus per-round summaries saved for any project the AA spins up.
-- Round updates automatically broadcast through the `MsgHubBroadcaster` interface so live dashboards / agents can subscribe.
+- Round updates automatically broadcast through the `MsgHubBroadcaster` interface so live dashboards / agents can subscribe, with `ProjectMsgHubRegistry + AgentScopeMsgHubBroadcaster` wiring those snapshots into runtime MsgHub participants.
 - Multi-round delivery gating: ExecutionLoop evaluates ≥90% quality, persists each round, and automatically replans/retries with improved metrics.
 - Artifact adapters (`WebDeployAdapter`, `MediaPackageAdapter`) produce concrete URLs/files and are attached to AA responses when acceptance succeeds.
 - KPI tracking hooks for cost/time deltas (baseline vs observed) surfaced through AA responses.
 
 **Work in Progress**
-- Bridging the broadcaster interface with runtime MsgHub instances to push live agent-to-agent announcements.
 - Deeper integration with the AgentScope runtime sandbox: resource policies, execution metadata, audit hooks.
 - Artifact adapters with real infrastructure hooks (Docker/K8s deployers, storage services) instead of mock URIs.
 
@@ -123,7 +121,7 @@ HiveCore layers (AA, planner/evaluator, project context, MsgHub) sit on top of A
 Target flow (now partially implemented with persistent memory + round gating + artifact adapters):
 
 1. **AssistantAgent (AA) exists per user** — AA now loads/saves long-term memory (prompt + knowledge + dialogue) through `AAMemoryStore`, so every conversation turn is persisted beyond process restarts.  
-2. **Project creation seeds shared context** — ExecutionLoop auto-registers projects, stores per-round summaries in `MemoryPool`, and exposes them through project tags; broadcaster hooks mirror each summary to live subscribers and will bridge to runtime MsgHub instances next.  
+2. **Project creation seeds shared context** — ExecutionLoop auto-registers projects, stores per-round summaries in `MemoryPool`, and mirrors them to live subscribers / runtime MsgHub participants via `ProjectMsgHubRegistry`.  
 3. **AA ↔ user refinement loop** — implemented: AA resolves requirements via injected resolvers, orchestrator selects agents from the AgentScope library, and user preferences from the memory store feed into the planner.  
 4. **Round-based work & gating** — implemented: every round records KPI + task status, evaluates against the ≥90% quality bar, and triggers replanning until either accepted or max rounds reached.  
 5. **Delivery matches the artifact** — implemented for web/media: once accepted, the artifact delivery manager spins up mocked deployments or packages and returns a concrete URL/URI that AA relays to the user (infra-backed adapters are the next step).

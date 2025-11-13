@@ -117,7 +117,27 @@ print(registry.aa_binding("user-1"))  # 预期输出 aa id
 
 ## 5. 下一步（可选）
 - 将 `project_pool.register(...)`、`memory_pool.save(...)` 扩展为持久化实现，以便后续验证“项目上下文共享”场景。
-- 在 `ExecutionLoop` 中接入真实 MsgHub，观察多 Agent 消息广播。
 - 为 KPI Tracker 添加断言：若小于 90% 则触发返工逻辑。
 
 完成以上步骤后，可在 README 中更新“进行中/已完成”的状态，或撰写测试报告总结观察结果。
+
+---
+
+## 6. 实战增强：MsgHub 实时广播
+目标：把 `ExecutionLoop` 产出的轮次摘要通过 AgentScope 的 `MsgHub` 推送给真实参与者（例如仪表盘 Agent / 在线订阅者）。
+
+6.1 **实现广播桥**
+- 在 `agentscope/ones/msghub.py` 中新增一个实现 `MsgHubBroadcaster` 的类，内部可复用 `agentscope.pipeline.MsgHub`。
+- 将 `RoundUpdate` 格式化为文本或结构化数据，并写入 `Msg.metadata`，以便订阅方二次处理。
+
+6.2 **注册项目级 Hub**
+- 提供工厂/注册机制，可按 `project_id` 绑定特定的 MsgHub 或订阅者列表。
+- `ExecutionLoop` 调用 `msg_hub_factory(project_id)` 时，应返回绑定后的广播器，若无绑定则回退到内存实现。
+
+6.3 **验证**
+- 编写一个最小订阅 Agent（覆写 `observe` 方法记录消息），注册到 Hub。
+- 运行 `tests/ones/` 或手工脚本，确认订阅 Agent 收到 `RoundUpdate`，并输出项目/轮次信息。
+
+6.4 **CLI 集成（可选）**
+- 为 `scripts/full_user_flow_cli.py` 增加参数，让用户能指定监听者或打开实时广播调试输出。
+- 在 README 中更新“MsgHub 广播”状态，说明现已支持实时推送。

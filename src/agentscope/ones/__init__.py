@@ -24,7 +24,13 @@ from .delivery import (
     CollaborationLayer,
     ExperienceLayer,
 )
-from .msghub import InMemoryMsgHub, MsgHubBroadcaster, RoundUpdate
+from .msghub import (
+    AgentScopeMsgHubBroadcaster,
+    InMemoryMsgHub,
+    MsgHubBroadcaster,
+    ProjectMsgHubRegistry,
+    RoundUpdate,
+)
 from .artifacts import (
     ArtifactDeliveryManager,
     ArtifactDeliveryResult,
@@ -82,6 +88,8 @@ __all__ = [
     "AAMemoryStore",
     "MsgHubBroadcaster",
     "InMemoryMsgHub",
+    "ProjectMsgHubRegistry",
+    "AgentScopeMsgHubBroadcaster",
     "RoundUpdate",
     "ArtifactDeliveryManager",
     "ArtifactDeliveryResult",

@@ -25,9 +25,9 @@ from agentscope.ones import (
     AssistantOrchestrator,
     ArtifactDeliveryManager,
     ExecutionLoop,
-    InMemoryMsgHub,
     KPITracker,
     MemoryPool,
+    ProjectMsgHubRegistry,
     ProjectPool,
     ResourceHandle,
     ResourceLibrary,
@@ -57,7 +57,7 @@ class RuntimeHarness:
     project_pool: ProjectPool
     memory_pool: MemoryPool
     resource_library: ResourceLibrary
-    msg_hub: InMemoryMsgHub | None
+    msg_hub_registry: ProjectMsgHubRegistry
     kpi_tracker: KPITracker
     aa_agent: AASystemAgent
     project_id: str
@@ -376,7 +376,7 @@ def build_runtime_harness(
     resource_library = ResourceLibrary()
     for handle in resource_handles:
         resource_library.register(handle)
-    msg_hub = InMemoryMsgHub()
+    msg_hub_registry = ProjectMsgHubRegistry()
     kpi_tracker = KPITracker(target_reduction=0.3)
     delivery_manager = ArtifactDeliveryManager([WebDeployAdapter()])
 
@@ -387,7 +387,7 @@ def build_runtime_harness(
         orchestrator=orchestrator,
         task_graph_builder=TaskGraphBuilder(),
         kpi_tracker=kpi_tracker,
-        msg_hub_factory=lambda _: msg_hub,
+        msg_hub_factory=msg_hub_registry,
         delivery_manager=delivery_manager,
     )
 
@@ -425,7 +425,7 @@ def build_runtime_harness(
         project_pool=project_pool,
         memory_pool=memory_pool,
         resource_library=resource_library,
-        msg_hub=msg_hub,
+        msg_hub_registry=msg_hub_registry,
         kpi_tracker=kpi_tracker,
         aa_agent=aa_agent,
         project_id=project_id,
