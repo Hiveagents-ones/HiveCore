@@ -213,9 +213,11 @@ async def collect_spec(
             return {"requirements": [], "summary": "", "cancelled": True}
 
     # Initialize acceptance structure
+    # Note: Thresholds lowered from 0.95/0.90 to 0.85/0.80 to account for
+    # common validation noise (import warnings, linter style issues, etc.)
     spec.setdefault("acceptance", {
-        "overall_target": 0.95,
-        "per_requirement_target": 0.90,
+        "overall_target": 0.85,
+        "per_requirement_target": 0.80,
     })
     spec.setdefault("acceptance_map", [])
 

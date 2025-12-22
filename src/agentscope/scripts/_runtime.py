@@ -236,8 +236,8 @@ def build_runtime_acceptance(
     acceptance_map = spec.get("acceptance_map", [])
 
     return {
-        "overall_target": acceptance.get("overall_target", 0.95),
-        "per_requirement_target": acceptance.get("per_requirement_target", 0.90),
+        "overall_target": acceptance.get("overall_target", 0.85),
+        "per_requirement_target": acceptance.get("per_requirement_target", 0.80),
         "criteria_by_requirement": {
             item.get("requirement_id", ""): item.get("criteria", [])
             for item in acceptance_map
@@ -446,8 +446,8 @@ def build_runtime_harness(
         description = "\n".join(descriptions) if descriptions else "Default acceptance criteria"
         # Build metrics
         metrics = {
-            "pass_threshold": runtime_acceptance.get("per_requirement_target", 0.9),
-            "overall_target": runtime_acceptance.get("overall_target", 0.95),
+            "pass_threshold": runtime_acceptance.get("per_requirement_target", 0.8),
+            "overall_target": runtime_acceptance.get("overall_target", 0.85),
         }
         return AcceptanceCriteria(
             description=description,

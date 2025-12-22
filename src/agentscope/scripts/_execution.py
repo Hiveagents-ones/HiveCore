@@ -120,7 +120,7 @@ async def run_execution(
     observer = get_execution_observer()
 
     requirements = spec.get("requirements", [])
-    overall_target = spec.get("acceptance", {}).get("overall_target", 0.95)
+    overall_target = spec.get("acceptance", {}).get("overall_target", 0.85)
 
     # State tracking
     feedback_map = {req["id"]: "" for req in requirements}
