@@ -577,6 +577,10 @@ LINTER_STRATEGY_PROMPT = """你是一个代码质量工具专家。根据以下�
 - 优先使用项目已配置的检查工具（检查 package.json scripts 或 pyproject.toml）
 - 命令应该能够在沙箱环境中直接执行
 - 如果工具未安装，提供 install_command
+- 重要：命令必须排除 node_modules、__pycache__、dist、build 等第三方目录
+- 对于 Python：使用 --ignore 或 --exclude 参数排除第三方代码
+- 对于 ESLint/TSC：使用 --ignore-pattern 参数排除 node_modules
+- 只检查业务代码（frontend/src、backend/app 等目录）
 """
 
 
@@ -591,6 +595,65 @@ class LinterCheckResult:
     error_count: int = 0
     warning_count: int = 0
     details: list[str] = field(default_factory=list)
+
+
+def _filter_source_files(files: dict[str, str]) -> dict[str, str]:
+    """Filter out third-party and generated files from file dict.
+
+    Args:
+        files: Dict mapping file paths to content
+
+    Returns:
+        dict: Filtered dict with only source files
+    """
+    excluded_patterns = [
+        "node_modules/",
+        "__pycache__/",
+        ".git/",
+        "dist/",
+        "build/",
+        ".venv/",
+        "venv/",
+        ".env/",
+        "env/",
+        ".pytest_cache/",
+        ".mypy_cache/",
+        ".tox/",
+        "egg-info/",
+        ".eggs/",
+        "htmlcov/",
+        ".coverage",
+        "coverage.xml",
+        "*.pyc",
+        "*.pyo",
+        "*.egg",
+        "*.whl",
+        "package-lock.json",
+        "yarn.lock",
+        "pnpm-lock.yaml",
+    ]
+
+    filtered = {}
+    for fpath, content in files.items():
+        # Skip excluded patterns
+        skip = False
+        for pattern in excluded_patterns:
+            if pattern.endswith("/"):
+                if pattern[:-1] in fpath:
+                    skip = True
+                    break
+            elif pattern.startswith("*."):
+                if fpath.endswith(pattern[1:]):
+                    skip = True
+                    break
+            elif pattern in fpath:
+                skip = True
+                break
+
+        if not skip:
+            filtered[fpath] = content
+
+    return filtered
 
 
 async def generate_linter_strategy(
@@ -613,10 +676,13 @@ async def generate_linter_strategy(
     """
     from ._llm_utils import call_llm_json
 
-    # Build file list summary
-    file_list = "\n".join(f"- {fpath}" for fpath in sorted(files.keys())[:50])
-    if len(files) > 50:
-        file_list += f"\n... 及其他 {len(files) - 50} 个文件"
+    # Filter out third-party files before building file list
+    source_files = _filter_source_files(files)
+
+    # Build file list summary from source files only
+    file_list = "\n".join(f"- {fpath}" for fpath in sorted(source_files.keys())[:50])
+    if len(source_files) > 50:
+        file_list += f"\n... 及其他 {len(source_files) - 50} 个源文件"
 
     # If no tech stack info, try to detect from files
     if not tech_stack_info:
@@ -937,15 +1003,20 @@ async def layered_code_validation(
     from ._observability import get_logger
     logger = get_logger()
 
+    # Filter out third-party files (node_modules, __pycache__, etc.)
+    source_files = _filter_source_files(files)
+    if verbose:
+        logger.debug(f"[Validation] Filtered {len(files)} files to {len(source_files)} source files")
+
     all_errors: list[str] = []
     all_warnings: list[str] = []
     details: dict[str, Any] = {}
     layer_results: list[tuple[str, float]] = []  # (layer_name, score)
 
-    # Layer 1: Static validation
+    # Layer 1: Static validation (use source files only)
     if verbose:
         logger.debug("[Validation] Running static analysis...")
-    static_result = run_static_validation(files)
+    static_result = run_static_validation(source_files)
     all_errors.extend(static_result.errors)
     all_warnings.extend(static_result.warnings)
     layer_results.append(("static", static_result.score))
@@ -955,7 +1026,7 @@ async def layered_code_validation(
     if runtime_workspace and runtime_workspace.is_initialized:
         if verbose:
             logger.debug("[Validation] Running import validation...")
-        import_result = run_import_validation(runtime_workspace, files)
+        import_result = run_import_validation(runtime_workspace, source_files)
         all_errors.extend(import_result.errors)
         all_warnings.extend(import_result.warnings)
         layer_results.append(("import", import_result.score))
@@ -973,7 +1044,7 @@ async def layered_code_validation(
         if verbose:
             logger.debug("[Validation] Running LLM-driven linter validation...")
         linter_result = await run_linter_validation(
-            runtime_workspace, llm, files, tech_stack_info, verbose=verbose
+            runtime_workspace, llm, source_files, tech_stack_info, verbose=verbose
         )
         all_errors.extend(linter_result.errors)
         all_warnings.extend(linter_result.warnings)
@@ -991,7 +1062,7 @@ async def layered_code_validation(
     if verbose:
         logger.debug("[Validation] Running LLM review...")
     llm_result = await validate_code_lightweight(
-        llm, files, requirement_summary, verbose=verbose
+        llm, source_files, requirement_summary, verbose=verbose
     )
     all_errors.extend(llm_result.errors)
     all_warnings.extend(llm_result.warnings)
@@ -1041,4 +1112,5 @@ __all__ = [
     "validate_code_lightweight",
     "validate_code_with_llm",
     "layered_code_validation",
+    "_filter_source_files",
 ]
