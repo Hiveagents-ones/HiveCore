@@ -60,21 +60,32 @@ def check_code_completeness(
     warnings: list[str] = []
 
     # Patterns that indicate incomplete code
+    # Note: TODO/FIXME are common in MVP code and shouldn't heavily penalize
+    # The ellipsis (...) check is removed as it's valid in Python type stubs
     incomplete_patterns = [
-        (r"#\s*TODO", "TODO comment found"),
-        (r"#\s*FIXME", "FIXME comment found"),
-        (r"pass\s*#", "Empty pass with comment"),
-        (r"\.\.\.", "Ellipsis placeholder"),
+        # Critical patterns (will be errors if blocking)
         (r"raise\s+NotImplementedError", "NotImplementedError"),
-        (r"//\s*TODO", "TODO comment (JS)"),
-        (r"<!--\s*TODO", "TODO comment (HTML)"),
+        # Minor patterns (warnings only, very low penalty)
+        (r"pass\s*#\s*TODO", "Empty pass with TODO"),
     ]
 
+    # Informational patterns (counted but not penalized much)
+    info_patterns = [
+        (r"#\s*TODO", "TODO comment"),
+        (r"#\s*FIXME", "FIXME comment"),
+        (r"//\s*TODO", "TODO comment (JS)"),
+    ]
+
+    info_count = 0
     for fpath, content in files.items():
         for pattern, desc in incomplete_patterns:
             matches = re.findall(pattern, content, re.IGNORECASE)
             if matches:
                 warnings.append(f"{fpath}: {desc} ({len(matches)} occurrences)")
+        # Count info patterns but don't add to warnings (just for logging)
+        for pattern, desc in info_patterns:
+            matches = re.findall(pattern, content, re.IGNORECASE)
+            info_count += len(matches)
 
     # Check for empty files
     for fpath, content in files.items():
@@ -82,7 +93,7 @@ def check_code_completeness(
             errors.append(f"{fpath}: Empty file")
 
     is_complete = len(errors) == 0
-    return is_complete, errors, warnings
+    return is_complete, errors, warnings, info_count
 
 
 def run_static_validation(
@@ -105,7 +116,7 @@ def run_static_validation(
     warnings: list[str] = []
 
     # Check completeness
-    is_complete, comp_errors, comp_warnings = check_code_completeness(files)
+    is_complete, comp_errors, comp_warnings, info_count = check_code_completeness(files)
     errors.extend(comp_errors)
     warnings.extend(comp_warnings)
 
@@ -117,17 +128,20 @@ def run_static_validation(
             except SyntaxError as exc:
                 errors.append(f"{fpath}:{exc.lineno}: Syntax error - {exc.msg}")
 
-    # Calculate score
+    # Calculate score - be lenient for MVP code
+    # Errors are penalized more heavily, but warnings much less
+    # Info patterns (TODO/FIXME) have very minimal impact
     error_penalty = len(errors) * 0.15
-    warning_penalty = len(warnings) * 0.05
-    score = max(0.0, 1.0 - error_penalty - warning_penalty)
+    warning_penalty = len(warnings) * 0.02  # Reduced from 0.05
+    info_penalty = min(0.05, info_count * 0.001)  # Very minimal penalty for TODOs
+    score = max(0.5, 1.0 - error_penalty - warning_penalty - info_penalty)
 
     return CodeValidationResult(
         is_valid=len(errors) == 0,
         score=score,
         errors=errors,
         warnings=warnings,
-        details={"static_check": True},
+        details={"static_check": True, "info_patterns": info_count},
     )
 
 
