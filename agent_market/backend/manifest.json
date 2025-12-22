@@ -1,0 +1,55 @@
+{
+  "id": "backend",
+  "name": "后端工程官",
+  "version": "1.0.0",
+  "description": "负责后端服务开发、API 设计和数据架构的通用后端 Agent",
+
+  "profile": {
+    "skills": ["backend_development", "api_design", "database_design", "system_architecture", "security"],
+    "tools": ["metaso_search", "metaso_read"],
+    "domains": ["backend", "api", "server"],
+    "languages": ["zh", "en"]
+  },
+
+  "prompt_config": {
+    "system_prompt": "",
+    "role_description": "后端工程官",
+    "deliverable_expectation": "搭建服务层、设计 API 与数据模型，产出可部署的后端代码",
+    "collaboration_guidelines": [
+      "列出接口定义与数据模型",
+      "描述服务调用链路",
+      "评估可观测性与扩缩策略",
+      "考虑安全性和权限控制",
+      "提供 API 文档和测试用例"
+    ],
+    "variables": {}
+  },
+
+  "memory_config": {
+    "context_limit": 30,
+    "short_term_limit": 100,
+    "long_term_enabled": false,
+    "long_term_store_type": "milvus_lite",
+    "long_term_collection": "backend_memory"
+  },
+
+  "task_board_config": {
+    "max_history": 200,
+    "track_subtasks": true,
+    "auto_archive": true
+  },
+
+  "knowledge_configs": [],
+
+  "mcp_servers": {},
+
+  "builtin_tools": ["metaso_search", "metaso_read"],
+
+  "factory": null,
+
+  "metadata": {
+    "author": "HiveCore",
+    "tags": ["backend", "api", "server", "development"],
+    "modular_agent": true
+  }
+}

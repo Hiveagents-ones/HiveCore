@@ -1,0 +1,212 @@
+openapi: 3.0.0
+info:
+  title: Member Management API
+  description: API for managing gym members
+  version: 1.0.0
+servers:
+  - url: http://localhost:8000/api/v1
+    description: Local development server
+  - url: https://6CZGhmNs.hivecore.local/api/v1
+    description: Production server
+
+tags:
+  - name: members
+    description: Member management operations
+
+paths:
+  /members:
+    get:
+      tags:
+        - members
+      summary: Get all members list
+      operationId: get_members
+      parameters:
+        - $ref: '#/components/parameters/accept_language'
+        - name: skip
+          in: query
+          description: Number of items to skip
+          required: false
+          schema:
+            type: integer
+            default: 0
+        - name: limit
+          in: query
+          description: Maximum number of items to return
+          required: false
+          schema:
+            type: integer
+            default: 100
+      responses:
+        '200':
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MemberResponse'
+    post:
+      tags:
+        - members
+      summary: Create new member
+      operationId: create_member
+      parameters:
+        - $ref: '#/components/parameters/accept_language'
+      requestBody:
+        description: Member object to create
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MemberCreate'
+      responses:
+        '201':
+          description: Member created successfully
+          headers:
+            Location:
+              description: URL of the created member
+              schema:
+                type: string
+                format: uri
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MemberResponse'
+
+  /members/{member_id}:
+    get:
+      tags:
+        - members
+      summary: Get member by ID
+      operationId: get_member
+      parameters:
+        - $ref: '#/components/parameters/accept_language'
+        - name: member_id
+          in: path
+          description: ID of member to return
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MemberResponse'
+        '404':
+          description: Member not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+
+  /members/metrics:
+    get:
+      tags:
+        - members
+      summary: Get member related metrics
+      operationId: get_member_metrics
+      responses:
+        '200':
+          description: Metrics retrieved successfully
+          headers:
+            X-RateLimit-Limit:
+              description: Request limit per hour
+              schema:
+                type: integer
+            X-RateLimit-Remaining:
+              description: The number of requests left for the time window
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  active_members:
+                    type: integer
+                  operations:
+                    type: object
+                    properties:
+                      create:
+                        type: integer
+                      get:
+                        type: integer
+                      update:
+                        type: integer
+                      delete:
+                        type: integer
+                  activity_count:
+                    type: object
+                    additionalProperties:
+                      type: integer
+                  last_activity:
+                    type: object
+                    additionalProperties:
+                      type: string
+                      format: date-time
+
+components:
+  parameters:
+    accept_language:
+      name: accept_language
+      in: header
+      description: Language preference
+      required: false
+      schema:
+        type: string
+
+  schemas:
+    MemberCreate:
+      type: object
+      required:
+        - name
+        - phone
+        - membership_type
+      properties:
+        name:
+          type: string
+        phone:
+          type: string
+        join_date:
+          type: string
+          format: date
+        membership_type:
+          type: string
+          enum: [basic, premium, vip]
+
+    MemberResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        phone:
+          type: string
+        join_date:
+          type: string
+          format: date
+        membership_type:
+          type: string
+          enum: [basic, premium, vip]
+    
+    MemberUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        phone:
+          type: string
+        join_date:
+          type: string
+          format: date
+        membership_type:
+          type: string
+          enum: [basic, premium, vip]

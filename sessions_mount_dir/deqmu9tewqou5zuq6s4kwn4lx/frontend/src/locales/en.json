@@ -1,0 +1,62 @@
+{
+  "common": {
+    "confirm": "Confirm",
+    "cancel": "Cancel",
+    "save": "Save",
+    "delete": "Delete",
+    "edit": "Edit",
+    "back": "Back",
+    "loading": "Loading...",
+    "error": "Error",
+    "success": "Success",
+    "noData": "No data available",
+    "submit": "Submit",
+    "reset": "Reset"
+  },
+  "navigation": {
+    "dashboard": "Dashboard",
+    "courses": "Courses",
+    "myBookings": "My Bookings",
+    "profile": "Profile",
+    "logout": "Logout"
+  },
+  "courses": {
+    "title": "Course List",
+    "name": "Course Name",
+    "instructor": "Instructor",
+    "time": "Time",
+    "duration": "Duration",
+    "spotsLeft": "Spots Left",
+    "location": "Location",
+    "description": "Description",
+    "bookNow": "Book Now",
+    "noCourses": "No courses available",
+    "bookingSuccess": "Booking successful",
+    "bookingFailed": "Booking failed",
+    "fullyBooked": "Fully booked",
+    "selectCourse": "Please select a course",
+    "confirmBooking": "Are you sure you want to book this course?"
+  },
+  "bookings": {
+    "title": "My Bookings",
+    "bookingId": "Booking ID",
+    "courseName": "Course Name",
+    "bookingTime": "Booking Time",
+    "status": "Status",
+    "statusConfirmed": "Confirmed",
+    "statusCancelled": "Cancelled",
+    "statusPending": "Pending",
+    "cancelBooking": "Cancel Booking",
+    "noBookings": "No bookings found",
+    "cancelSuccess": "Booking cancelled successfully",
+    "cancelFailed": "Failed to cancel booking",
+    "confirmCancel": "Are you sure you want to cancel this booking?"
+  },
+  "messages": {
+    "loginRequired": "Please login to continue",
+    "sessionExpired": "Session expired, please login again",
+    "networkError": "Network error, please try again",
+    "operationSuccess": "Operation completed successfully",
+    "operationFailed": "Operation failed, please try again"
+  }
+}

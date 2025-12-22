@@ -1,0 +1,89 @@
+{
+  "register": {
+    "title": "Member Registration",
+    "form": {
+      "basicInfo": {
+        "title": "Basic Information",
+        "name": {
+          "label": "Full Name",
+          "placeholder": "Enter your full name",
+          "required": "Full name is required"
+        },
+        "gender": {
+          "label": "Gender",
+          "placeholder": "Select gender",
+          "required": "Gender is required",
+          "options": {
+            "male": "Male",
+            "female": "Female",
+            "other": "Other"
+          }
+        },
+        "phone": {
+          "label": "Phone Number",
+          "placeholder": "Enter your phone number",
+          "required": "Phone number is required",
+          "invalid": "Please enter a valid phone number"
+        },
+        "idCard": {
+          "label": "ID Card Number",
+          "placeholder": "Enter your ID card number",
+          "required": "ID card number is required",
+          "invalid": "Please enter a valid ID card number"
+        }
+      },
+      "contactInfo": {
+        "title": "Contact Information",
+        "email": {
+          "label": "Email Address",
+          "placeholder": "Enter your email address",
+          "required": "Email address is required",
+          "invalid": "Please enter a valid email address"
+        },
+        "address": {
+          "label": "Address",
+          "placeholder": "Enter your address",
+          "required": "Address is required"
+        }
+      },
+      "emergencyContact": {
+        "title": "Emergency Contact",
+        "name": {
+          "label": "Contact Name",
+          "placeholder": "Enter emergency contact name",
+          "required": "Emergency contact name is required"
+        },
+        "phone": {
+          "label": "Contact Phone",
+          "placeholder": "Enter emergency contact phone",
+          "required": "Emergency contact phone is required",
+          "invalid": "Please enter a valid phone number"
+        },
+        "relationship": {
+          "label": "Relationship",
+          "placeholder": "Select relationship",
+          "required": "Relationship is required",
+          "options": {
+            "parent": "Parent",
+            "spouse": "Spouse",
+            "sibling": "Sibling",
+            "friend": "Friend",
+            "other": "Other"
+          }
+        }
+      }
+    },
+    "submit": {
+      "button": "Register",
+      "processing": "Registering...",
+      "success": "Registration successful! Your member ID is: {id}",
+      "error": "Registration failed. Please try again."
+    },
+    "validation": {
+      "required": "This field is required",
+      "invalidFormat": "Invalid format",
+      "minLength": "Must be at least {min} characters",
+      "maxLength": "Must not exceed {max} characters"
+    }
+  }
+}

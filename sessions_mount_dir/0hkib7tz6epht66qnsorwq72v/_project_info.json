@@ -1,0 +1,23 @@
+{
+  "project_type": "web",
+  "files": [
+    "backend/app/main.py",
+    "backend/app/core/config.py",
+    "backend/app/models/member.py",
+    "backend/app/schemas/member.py",
+    "backend/app/crud/member.py",
+    "backend/app/api/v1/endpoints/members.py",
+    "frontend/src/api/member.js",
+    "frontend/src/views/MemberList.vue",
+    "frontend/src/views/MemberForm.vue",
+    "backend/app/core/security.py",
+    "alembic.ini",
+    "README.md"
+  ],
+  "setup_commands": [],
+  "setup_executed": false,
+  "run_command": "docker-compose up -d",
+  "entry_point": "backend/app/main.py",
+  "runtime_mode": true,
+  "sandbox_id": "runtime_sandbox_container_0hkib7tz6epht66qnsorwq72v"
+}

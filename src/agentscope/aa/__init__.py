@@ -6,7 +6,8 @@ from ._types import (
     AgentProfile,
     CandidateRanking,
     RequirementHardConstraints,
-    RoleRequirement,
+    Requirement,
+    RoleRequirement,  # Alias for backward compatibility
     SelectionDecision,
     SelectionAuditLog,
     StaticScore,
@@ -21,7 +22,8 @@ __all__ = [
     "AgentProfile",
     "CandidateRanking",
     "RequirementHardConstraints",
-    "RoleRequirement",
+    "Requirement",
+    "RoleRequirement",  # Alias for backward compatibility
     "SelectionDecision",
     "SelectionAuditLog",
     "StaticScore",

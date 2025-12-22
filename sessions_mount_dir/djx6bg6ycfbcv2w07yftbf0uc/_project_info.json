@@ -1,0 +1,68 @@
+{
+  "project": {
+    "id": "R6",
+    "title": "商家端 - 会员管理",
+    "type": "功能",
+    "details": "商家可以查看其店铺下的会员列表，查看会员的预约记录、消费情况，并可对会员进行标签管理或备注。",
+    "priority": "P1"
+  },
+  "architecture": {
+    "frontend": {
+      "framework": "Vue 3",
+      "bundler": "Vite",
+      "entry": "frontend/src/main.js",
+      "port": 3000,
+      "devCommand": "cd frontend && npm run dev",
+      "buildCommand": "cd frontend && npm run build"
+    },
+    "backend": {
+      "framework": "FastAPI",
+      "orm": "SQLAlchemy",
+      "database": "PostgreSQL",
+      "entry": "backend/app/main.py",
+      "port": 8000,
+      "devCommand": "cd backend && uvicorn app.main:app --reload --host 0.0.0.0 --port 8000",
+      "buildCommand": "cd backend && pip install -r requirements.txt"
+    }
+  },
+  "runtime": {
+    "environment": "development",
+    "database_url": "postgresql://user:password@localhost:5432/merchant_db",
+    "api_base_url": "http://localhost:8000",
+    "frontend_base_url": "http://localhost:3000"
+  },
+  "generated_files": [
+    "backend/app/models.py",
+    "backend/app/schemas.py",
+    "backend/app/routers/members.py",
+    "frontend/src/components/TagManager.vue",
+    "frontend/src/components/NoteManager.vue",
+    "frontend/src/router/index.js",
+    "frontend/src/services/api.js",
+    "frontend/src/views/merchant/MemberListView.vue",
+    "frontend/src/views/merchant/MemberDetailView.vue",
+    "frontend/src/locales/zh.json",
+    "frontend/src/locales/en.json",
+    "backend/app/main.py"
+  ],
+  "startup_commands": {
+    "backend": "cd backend && uvicorn app.main:app --reload --host 0.0.0.0 --port 8000",
+    "frontend": "cd frontend && npm run dev",
+    "database": "docker run --name postgres -e POSTGRES_PASSWORD=password -e POSTGRES_DB=merchant_db -p 5432:5432 -d postgres"
+  },
+  "dependencies": {
+    "backend": [
+      "fastapi",
+      "uvicorn",
+      "sqlalchemy",
+      "psycopg2-binary",
+      "python-multipart"
+    ],
+    "frontend": [
+      "vue",
+      "vue-router",
+      "axios",
+      "vite"
+    ]
+  }
+}

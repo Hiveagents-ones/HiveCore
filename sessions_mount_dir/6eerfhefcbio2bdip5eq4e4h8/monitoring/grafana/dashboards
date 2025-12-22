@@ -1,0 +1,79 @@
+{
+  "dashboard": {
+    "id": null,
+    "title": "Membership Renewal & Payment Monitoring",
+    "tags": ["membership", "payment", "renewal"],
+    "timezone": "browser",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Payment Success Rate",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "rate(payment_success_total[5m]) / (rate(payment_success_total[5m]) + rate(payment_failure_total[5m])) * 100",
+            "legendFormat": "Success Rate"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "min": 0,
+            "max": 100
+          }
+        },
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 }
+      },
+      {
+        "id": 2,
+        "title": "Payment Volume",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "sum(rate(payment_amount_total[5m]))",
+            "legendFormat": "Amount per Second"
+          }
+        ],
+        "yAxes": [
+          { "label": "Amount", "min": 0 }
+        ],
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 }
+      },
+      {
+        "id": 3,
+        "title": "Renewal Reminders Sent",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "increase(reminder_sent_total[1h])",
+            "legendFormat": "Reminders per Hour"
+          }
+        ],
+        "yAxes": [
+          { "label": "Count", "min": 0 }
+        ],
+        "gridPos": { "h": 8, "w": 24, "x": 0, "y": 8 }
+      },
+      {
+        "id": 4,
+        "title": "Membership Expiry Trend",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "membership_expiry_count",
+            "legendFormat": "Expiring Memberships"
+          }
+        ],
+        "yAxes": [
+          { "label": "Count", "min": 0 }
+        ],
+        "gridPos": { "h": 8, "w": 24, "x": 0, "y": 16 }
+      }
+    ],
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    },
+    "refresh": "5s"
+  }
+}

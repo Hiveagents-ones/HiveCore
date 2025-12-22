@@ -1,0 +1,26 @@
+{
+  "project_type": "web",
+  "files": [
+    "backend/app/main.py",
+    "backend/app/database.py",
+    "backend/app/core/security.py",
+    "backend/alembic.ini",
+    "backend/app/models.py",
+    "backend/app/schemas.py",
+    "backend/app/core/auth.py",
+    "backend/app/middleware/audit.py",
+    "backend/app/routers/members.py",
+    "frontend/src/views/MemberList.vue",
+    "frontend/src/views/MemberForm.vue",
+    "frontend/src/api/members.js",
+    "frontend/src/i18n/index.js",
+    "docker-compose.yml",
+    "scripts/backup.sh"
+  ],
+  "setup_commands": [],
+  "setup_executed": false,
+  "run_command": "",
+  "entry_point": "",
+  "runtime_mode": true,
+  "sandbox_id": "runtime_sandbox_container_402txfok5pwhgh5l5tx5rorcv"
+}

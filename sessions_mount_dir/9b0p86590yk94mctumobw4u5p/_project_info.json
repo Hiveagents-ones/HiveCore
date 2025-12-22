@@ -1,0 +1,23 @@
+{
+  "project_type": "web",
+  "files": [
+    "frontend/src/views/RegisterView.vue",
+    "backend/app/main.py",
+    "frontend/src/stores/register.js",
+    "backend/app/models.py",
+    "frontend/src/services/api.js",
+    "backend/app/schemas.py",
+    "frontend/src/router/index.js",
+    "backend/app/routers/register.py",
+    "frontend/src/main.js",
+    "backend/app/core/config.py",
+    "docker-compose.yml",
+    "README.md"
+  ],
+  "setup_commands": [],
+  "setup_executed": false,
+  "run_command": "",
+  "entry_point": "",
+  "runtime_mode": true,
+  "sandbox_id": "runtime_sandbox_container_9b0p86590yk94mctumobw4u5p"
+}

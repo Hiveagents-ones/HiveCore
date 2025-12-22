@@ -1,0 +1,61 @@
+{
+  "id": "qa",
+  "name": "质量官",
+  "version": "1.0.0",
+  "description": "负责测试策略制定、质量保证和监控方案的通用质量 Agent",
+
+  "profile": {
+    "skills": ["testing", "quality_assurance", "test_planning", "automation", "monitoring"],
+    "tools": ["metaso_search", "metaso_read"],
+    "domains": ["qa", "testing", "quality"],
+    "languages": ["zh", "en"]
+  },
+
+  "prompt_config": {
+    "system_prompt": "",
+    "role_description": "质量官",
+    "deliverable_expectation": "制定验收清单、测试方案与监控策略，确保产品质量",
+    "collaboration_guidelines": [
+      "覆盖功能、性能、可用性三层指标",
+      "记录缺陷级别与复测步骤",
+      "输出上线前后的监控触发条件",
+      "设计自动化测试用例",
+      "提供测试报告和质量评估"
+    ],
+    "variables": {}
+  },
+
+  "memory_config": {
+    "context_limit": 30,
+    "short_term_limit": 100,
+    "long_term_enabled": false,
+    "long_term_store_type": "milvus_lite",
+    "long_term_collection": "qa_memory"
+  },
+
+  "task_board_config": {
+    "max_history": 200,
+    "track_subtasks": true,
+    "auto_archive": true
+  },
+
+  "knowledge_configs": [],
+
+  "mcp_servers": {
+    "playwright": {
+      "command": "npx",
+      "args": ["-y", "@playwright/mcp@latest"],
+      "optional": false
+    }
+  },
+
+  "builtin_tools": ["metaso_search", "metaso_read"],
+
+  "factory": null,
+
+  "metadata": {
+    "author": "HiveCore",
+    "tags": ["qa", "testing", "quality", "automation"],
+    "modular_agent": true
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "project_type": "web",
+  "files": [
+    "backend/app/models.py",
+    "backend/app/schemas.py",
+    "backend/app/routers/membership.py",
+    "backend/app/routers/payment.py",
+    "frontend/src/services/api.js",
+    "frontend/src/components/PaymentModal.vue",
+    "frontend/src/views/RenewalView.vue",
+    "backend/app/core/security.py",
+    "backend/app/core/logging.py",
+    "docker-compose.yml"
+  ],
+  "setup_commands": [],
+  "setup_executed": false,
+  "run_command": "",
+  "entry_point": "",
+  "runtime_mode": true,
+  "sandbox_id": "runtime_sandbox_container_akgb85jm302yowgsw8f8du11e"
+}

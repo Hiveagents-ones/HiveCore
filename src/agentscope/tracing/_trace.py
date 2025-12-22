@@ -60,6 +60,42 @@ def _check_tracing_enabled() -> bool:
     return _config.trace_enabled
 
 
+def _collect_usage_to_hub(
+    usage: Any,
+    model_name: str,
+    agent_id: str,
+    agent_name: str,
+) -> None:
+    """Collect usage metrics to ObservabilityHub.
+
+    This is a best-effort operation that should not affect the main flow.
+
+    Args:
+        usage:
+            The ChatUsage object.
+        model_name (`str`):
+            The model name.
+        agent_id (`str`):
+            The agent ID.
+        agent_name (`str`):
+            The agent name.
+    """
+    try:
+        from ..observability import UsageCollector
+
+        collector = UsageCollector()
+        collector.collect_from_chat_usage(
+            usage=usage,
+            agent_id=agent_id,
+            agent_name=agent_name,
+            model_name=model_name,
+            project_id=getattr(_config, "current_project_id", None),
+        )
+    except Exception as e:
+        # Observability should not affect main flow
+        logger.debug("Failed to collect usage to ObservabilityHub: %s", e)
+
+
 def _trace_sync_generator_wrapper(
     res: Generator[T, None, None],
     span: Span,
@@ -96,6 +132,7 @@ def _trace_sync_generator_wrapper(
 async def _trace_async_generator_wrapper(
     res: AsyncGenerator[T, None],
     span: Span,
+    model_info: dict | None = None,
 ) -> AsyncGenerator[T, None]:
     """Trace the async generator output with OpenTelemetry.
 
@@ -104,6 +141,8 @@ async def _trace_async_generator_wrapper(
             The generator or async generator to be traced.
         span (`Span`):
             The OpenTelemetry span to be used for tracing.
+        model_info (`dict | None`, optional):
+            Model info for usage collection: {model_name, agent_id, agent_name}.
 
     Yields:
         `T`:
@@ -127,12 +166,35 @@ async def _trace_async_generator_wrapper(
 
     finally:
         if not has_error:
-            # Set the last chunk as output
-            span.set_attributes(
-                {
-                    SpanAttributes.OUTPUT: _serialize_to_str(last_chunk),
-                },
-            )
+            output_attrs = {
+                SpanAttributes.OUTPUT: _serialize_to_str(last_chunk),
+            }
+
+            # Add usage metrics from last chunk if available
+            if (
+                last_chunk is not None
+                and hasattr(last_chunk, "usage")
+                and last_chunk.usage is not None
+            ):
+                output_attrs.update({
+                    SpanAttributes.USAGE_TOKENS_INPUT: last_chunk.usage.input_tokens,
+                    SpanAttributes.USAGE_TOKENS_OUTPUT: last_chunk.usage.output_tokens,
+                    SpanAttributes.USAGE_TOKENS_TOTAL: (
+                        last_chunk.usage.input_tokens + last_chunk.usage.output_tokens
+                    ),
+                    SpanAttributes.USAGE_DURATION_MS: last_chunk.usage.time * 1000,
+                })
+
+                # Collect to ObservabilityHub if model_info is provided
+                if model_info:
+                    _collect_usage_to_hub(
+                        usage=last_chunk.usage,
+                        model_name=model_info.get("model_name", "unknown"),
+                        agent_id=model_info.get("agent_id", "unknown"),
+                        agent_name=model_info.get("agent_name", "unknown"),
+                    )
+
+            span.set_attributes(output_attrs)
             span.set_status(opentelemetry.trace.StatusCode.OK)
         span.end()
 
@@ -680,12 +742,37 @@ def trace_llm(
 
                 # If the result is a AsyncGenerator
                 if isinstance(res, AsyncGenerator):
-                    return _trace_async_generator_wrapper(res, span)
+                    model_info = {
+                        "model_name": self.model_name,
+                        "agent_id": getattr(self, "id", "unknown"),
+                        "agent_name": getattr(self, "name", self.model_name),
+                    }
+                    return _trace_async_generator_wrapper(res, span, model_info)
 
                 # non-generator result
-                span.set_attributes(
-                    {SpanAttributes.OUTPUT: _serialize_to_str(res)},
-                )
+                output_attrs = {SpanAttributes.OUTPUT: _serialize_to_str(res)}
+
+                # Add usage metrics to span if available
+                if hasattr(res, "usage") and res.usage is not None:
+                    output_attrs.update({
+                        SpanAttributes.USAGE_TOKENS_INPUT: res.usage.input_tokens,
+                        SpanAttributes.USAGE_TOKENS_OUTPUT: res.usage.output_tokens,
+                        SpanAttributes.USAGE_TOKENS_TOTAL: (
+                            res.usage.input_tokens + res.usage.output_tokens
+                        ),
+                        SpanAttributes.USAGE_DURATION_MS: res.usage.time * 1000,
+                        SpanAttributes.MODEL_NAME: self.model_name,
+                    })
+
+                    # Collect to ObservabilityHub
+                    _collect_usage_to_hub(
+                        usage=res.usage,
+                        model_name=self.model_name,
+                        agent_id=getattr(self, "id", "unknown"),
+                        agent_name=getattr(self, "name", self.model_name),
+                    )
+
+                span.set_attributes(output_attrs)
                 span.set_status(opentelemetry.trace.StatusCode.OK)
                 span.end()
                 return res

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import asdict
 from datetime import datetime, timezone
-from typing import Iterable, Sequence
+from typing import Sequence
 
 from .._logging import logger
 from ._types import (
@@ -14,7 +14,7 @@ from ._types import (
     CandidateRanking,
     RequirementFitBreakdown,
     RequirementHardConstraints,
-    RoleRequirement,
+    Requirement,
     SelectionAuditLog,
     SelectionDecision,
     SelectionRound,
@@ -36,7 +36,7 @@ class RequirementFitScorer:
     def __init__(self, config: AAScoringConfig) -> None:
         self.config = config
 
-    def _resolve_weights(self, requirement: RoleRequirement) -> dict[str, float]:
+    def _resolve_weights(self, requirement: Requirement) -> dict[str, float]:
         weights = self.config.default_requirement_weights.copy()
         weights.update(requirement.weight_overrides)
         total = sum(weights.values())
@@ -46,7 +46,7 @@ class RequirementFitScorer:
 
     def score(
         self,
-        requirement: RoleRequirement,
+        requirement: Requirement,
         capabilities: AgentCapabilities,
     ) -> RequirementFitBreakdown:
         weights = self._resolve_weights(requirement)
@@ -104,15 +104,13 @@ class AssistantAgentSelector:
 
     def _filter_candidates(
         self,
-        role: str,
-        requirement: RoleRequirement,
+        requirement: Requirement,
         candidates: Sequence[AgentProfile],
     ) -> list[AgentProfile]:
+        """Filter candidates by hard constraints only (no role matching)."""
         hard_filter: RequirementHardConstraints = requirement.hard_constraints
         filtered: list[AgentProfile] = []
         for profile in candidates:
-            if profile.role != role:
-                continue
             if not hard_filter.satisfied_by(profile.capabilities):
                 continue
             filtered.append(profile)
@@ -148,7 +146,7 @@ class AssistantAgentSelector:
     def _compose_candidate_ranking(
         self,
         profile: AgentProfile,
-        requirement: RoleRequirement,
+        requirement: Requirement,
         now: datetime,
         cold_start_quota_state: dict[str, int],
     ) -> CandidateRanking:
@@ -213,21 +211,30 @@ class AssistantAgentSelector:
 
     def select(
         self,
-        role: str,
-        requirement: RoleRequirement,
+        requirement: Requirement,
         candidates: Sequence[AgentProfile],
         batch_index: int = 0,
         user_selected_agent_id: str | None = None,
     ) -> SelectionDecision:
+        """Select the best agent based on capabilities matching.
+
+        Args:
+            requirement: The capability requirements for selection.
+            candidates: List of available agent profiles.
+            batch_index: Pagination index for large candidate lists.
+            user_selected_agent_id: Optional user override for selection.
+
+        Returns:
+            SelectionDecision with the selected agent and rankings.
+        """
         if batch_index < 0:
             raise ValueError("batch_index must be non-negative")
 
         now = self._utcnow()
-        filtered = self._filter_candidates(role, requirement, candidates)
+        filtered = self._filter_candidates(requirement, candidates)
         if not filtered:
-            logger.warning("No candidates available for role %s", role)
+            logger.warning("No candidates available for requirement: %s", requirement)
             empty_round = SelectionRound(
-                role=role,
                 batch_index=batch_index,
                 requirement=requirement,
                 candidates=[],
@@ -247,12 +254,10 @@ class AssistantAgentSelector:
         batch = self._slice_batch(ranked_by_base, batch_index)
         if not batch:
             logger.info(
-                "Batch index %s exceeds candidate list for role %s",
+                "Batch index %s exceeds candidate list",
                 batch_index,
-                role,
             )
             empty_round = SelectionRound(
-                role=role,
                 batch_index=batch_index,
                 requirement=requirement,
                 candidates=[],
@@ -278,6 +283,20 @@ class AssistantAgentSelector:
 
         decision_source = "system"
         selected = ordered_candidates[0] if ordered_candidates else None
+
+        # Check if best candidate meets minimum fit threshold
+        if selected is not None:
+            fit_score = selected.requirement_fit.score
+            if fit_score < self.config.min_fit_threshold:
+                logger.info(
+                    "Best candidate %s has fit score %.2f below threshold %.2f, "
+                    "returning None to trigger agent spawn",
+                    selected.profile.agent_id,
+                    fit_score,
+                    self.config.min_fit_threshold,
+                )
+                selected = None
+
         if user_selected_agent_id:
             override = next(
                 (
@@ -295,7 +314,6 @@ class AssistantAgentSelector:
             decision_source = "user"
 
         selection_round = SelectionRound(
-            role=role,
             batch_index=batch_index,
             requirement=requirement,
             candidates=ordered_candidates,

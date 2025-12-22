@@ -1,0 +1,45 @@
+{
+  "common": {
+    "confirm": "确认",
+    "cancel": "取消",
+    "submit": "提交",
+    "loading": "加载中...",
+    "success": "成功",
+    "error": "错误",
+    "warning": "警告",
+    "info": "信息"
+  },
+  "register": {
+    "title": "会员注册",
+    "name": "姓名",
+    "namePlaceholder": "请输入您的姓名",
+    "phone": "手机号",
+    "phonePlaceholder": "请输入您的手机号",
+    "idCard": "身份证号",
+    "idCardPlaceholder": "请输入您的身份证号",
+    "package": "会员套餐",
+    "packagePlaceholder": "请选择会员套餐",
+    "payment": "支付方式",
+    "paymentPlaceholder": "请选择支付方式",
+    "registerButton": "立即注册",
+    "registerSuccess": "注册成功",
+    "registerFailed": "注册失败",
+    "nameRequired": "请输入姓名",
+    "phoneRequired": "请输入手机号",
+    "phoneInvalid": "手机号格式不正确",
+    "idCardRequired": "请输入身份证号",
+    "idCardInvalid": "身份证号格式不正确",
+    "packageRequired": "请选择会员套餐",
+    "paymentRequired": "请选择支付方式"
+  },
+  "packages": {
+    "basic": "基础套餐",
+    "standard": "标准套餐",
+    "premium": "高级套餐"
+  },
+  "payment": {
+    "alipay": "支付宝",
+    "wechat": "微信支付",
+    "card": "银行卡"
+  }
+}

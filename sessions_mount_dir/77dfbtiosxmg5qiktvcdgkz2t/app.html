@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Accessible Counter</title>
+    <style>
+        /* CSS Variables for theming */
+        :root {
+            --primary-color: #005fcc;
+            --primary-hover: #004daa;
+            --primary-active: #003d8a;
+            --text-color: #333333;
+            --background-color: #f4f4f9;
+            --error-color: #d93025;
+            --success-color: #1e8e3e;
+            --border-radius: 8px;
+            --font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        /* Base styles */
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: var(--font-family);
+            background-color: var(--background-color);
+            color: var(--text-color);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            text-align: center;
+        }
+
+        /* Main container */
+        .ui-container {
+            background-color: #ffffff;
+            padding: 2rem;
+            border-radius: var(--border-radius);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            width: 90%;
+            max-width: 400px;
+        }
+
+        /* Counter display */
+        .counter-display {
+            font-size: 4rem;
+            font-weight: bold;
+            margin: 1.5rem 0;
+            color: var(--primary-color);
+            transition: color 0.3s ease;
+        }
+
+        /* Button styles */
+        .increment-button {
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 1rem 2rem;
+            font-size: 1.2rem;
+            border-radius: var(--border-radius);
+            cursor: pointer;
+            transition: background-color 0.2s ease, transform 0.1s ease;
+            width: 100%;
+            max-width: 300px;
+        }
+
+        .increment-button:hover {
+            background-color: var(--primary-hover);
+        }
+
+        .increment-button:active {
+            background-color: var(--primary-active);
+            transform: scale(0.98);
+        }
+
+        .increment-button:focus {
+            outline: 2px solid var(--primary-color);
+            outline-offset: 2px;
+        }
+
+        /* Error message */
+        .error-message {
+            color: var(--error-color);
+            margin-top: 1rem;
+            display: none;
+            font-size: 0.9rem;
+        }
+
+        /* Responsive design */
+        @media (max-width: 320px) {
+            .ui-container {
+                padding: 1rem;
+            }
+            
+            .counter-display {
+                font-size: 3rem;
+            }
+            
+            .increment-button {
+                padding: 0.8rem 1.5rem;
+                font-size: 1rem;
+            }
+        }
+
+        @media (min-width: 768px) {
+            .ui-container {
+                padding: 2.5rem;
+            }
+        }
+
+        @media (min-width: 1024px) {
+            .counter-display {
+                font-size: 5rem;
+            }
+        }
+
+        @media (min-width: 1920px) {
+            .ui-container {
+                max-width: 500px;
+                padding: 3rem;
+            }
+            
+            .counter-display {
+                font-size: 6rem;
+            }
+        }
+
+        /* Accessibility */
+        .sr-only {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border-width: 0;
+        }
+    </style>
+</head>
+<body>
+    <main class="ui-container">
+        <h1>Counter</h1>
+        <p class="counter-display" id="counter-display" aria-live="polite">0</p>
+        <button 
+            class="increment-button" 
+            id="increment-button"
+            aria-label="Increment counter"
+            role="button"
+            tabindex="0"
+        >
+            Click to Increment
+        </button>
+        <div class="error-message" id="error-message" role="alert"></div>
+        <div class="sr-only" aria-live="assertive" id="screen-reader-announcement"></div>
+    </main>
+
+    <script>
+        // Configuration object for extensibility
+        const config = {
+            initialValue: 0,
+            step: 1,
+            maxValue: Number.MAX_SAFE_INTEGER,
+            debounceTime: 100, // ms
+            locale: document.documentElement.lang || navigator.language || 'en-US'
+        };
+
+        // State management
+        let state = {
+            count: config.initialValue,
+            isProcessing: false,
+            lastClickTime: 0
+        };
+
+        // DOM elements
+        const counterDisplay = document.getElementById('counter-display');
+        const incrementButton = document.getElementById('increment-button');
+        const errorMessage = document.getElementById('error-message');
+        const screenReaderAnnouncement = document.getElementById('screen-reader-announcement');
+
+        // Number formatter for internationalization
+        const formatter = new Intl.NumberFormat(config.locale);
+
+        // Utility functions
+        function log(message, data = null) {
+            const timestamp = new Date().toISOString();
+            console.info(`[${timestamp}] ${message}`, data || '');
+        }
+
+        function formatNumber(num) {
+            try {
+                return formatter.format(num);
+            } catch (e) {
+                log('Number formatting error', e);
+                return num.toString();
+            }
+        }
+
+        function updateDisplay() {
+            const formattedCount = formatNumber(state.count);
+            counterDisplay.textContent = formattedCount;
+            
+            // Announce to screen readers
+            screenReaderAnnouncement.textContent = `Count is now ${formattedCount}`;
+        }
+
+        function showError(message) {
+            errorMessage.textContent = message;
+            errorMessage.style.display = 'block';
+            log('Error displayed', message);
+            
+            // Auto-hide after 3 seconds
+            setTimeout(() => {
+                errorMessage.style.display = 'none';
+            }, 3000);
+        }
+
+        function hideError() {
+            errorMessage.style.display = 'none';
+        }
+
+        // Debounce function to prevent rapid clicking
+        function debounce(func, wait) {
+            return function(...args) {
+                const now = Date.now();
+                if (now - state.lastClickTime >= wait) {
+                    state.lastClickTime = now;
+                    return func.apply(this, args);
+                }
+            };
+        }
+
+        // Core counter logic
+        function incrementCounter() {
+            const startTime = performance.now();
+            
+            try {
+                // Check for overflow
+                if (state.count > config.maxValue - config.step) {
+                    showError('Maximum count reached! Cannot increment further.');
+                    log('Maximum count reached', { current: state.count, max: config.maxValue });
+                    return;
+                }
+
+                // Update state
+                state.count += config.step;
+                
+                // Update UI
+                updateDisplay();
+                
+                // Log the action
+                log('Counter incremented', { newCount: state.count });
+                
+                // Performance logging
+                const endTime = performance.now();
+                const duration = endTime - startTime;
+                if (duration > 100) {
+                    log('Performance warning', { duration: `${duration.toFixed(2)}ms` });
+                }
+                
+            } catch (error) {
+                showError('An unexpected error occurred. Please try again.');
+                log('Counter increment error', error);
+            }
+        }
+
+        // Debounced version of incrementCounter
+        const debouncedIncrement = debounce(incrementCounter, config.debounceTime);
+
+        // Event handlers
+        function handleClick(event) {
+            event.preventDefault();
+            hideError();
+            debouncedIncrement();
+        }
+
+        function handleKeyDown(event) {
+            if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                handleClick(event);
+            }
+        }
+
+        // Initialize the application
+        function init() {
+            log('Counter application initialized', { config });
+            updateDisplay();
+            
+            // Bind events
+            incrementButton.addEventListener('click', handleClick);
+            incrementButton.addEventListener('keydown', handleKeyDown);
+            
+            // Performance monitoring
+            if ('performance' in window && 'measure' in window.performance) {
+                window.performance.mark('app-start');
+                window.addEventListener('load', () => {
+                    window.performance.mark('app-loaded');
+                    window.performance.measure('app-load-time', 'app-start', 'app-loaded');
+                    const loadTime = window.performance.getEntriesByName('app-load-time')[0].duration;
+                    log('Application load time', { duration: `${loadTime.toFixed(2)}ms` });
+                });
+            }
+        }
+
+        // Start the application when DOM is ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', init);
+        } else {
+            init();
+        }
+
+        // Expose reset functionality for extensibility
+        window.resetCounter = function() {
+            state.count = config.initialValue;
+            updateDisplay();
+            log('Counter reset', { newCount: state.count });
+        };
+
+        // Expose configuration for extensibility
+        window.updateConfig = function(newConfig) {
+            Object.assign(config, newConfig);
+            log('Configuration updated', { config });
+        };
+    </script>
+</body>
+</html>

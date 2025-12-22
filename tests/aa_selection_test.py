@@ -11,8 +11,8 @@ from agentscope.aa import (
     AgentProfile,
     FaultLedger,
     FaultRecord,
+    Requirement,
     RequirementHardConstraints,
-    RoleRequirement,
     StaticScore,
 )
 
@@ -35,7 +35,6 @@ def _profile(
     return AgentProfile(
         agent_id=agent_id,
         name=agent_id,
-        role="Dev",
         static_score=StaticScore(
             performance=performance,
             brand=0.5,
@@ -60,8 +59,7 @@ def test_requirement_fit_can_out_rank_s_base() -> None:
     config = AAScoringConfig(top_n=2, requirement_weight=0.6)
     selector = AssistantAgentSelector(config=config)
 
-    requirement = RoleRequirement(
-        role="Dev",
+    requirement = Requirement(
         skills={"python", "rag"},
         tools={"docker"},
     )
@@ -82,7 +80,6 @@ def test_requirement_fit_can_out_rank_s_base() -> None:
     )
 
     decision = selector.select(
-        role="Dev",
         requirement=requirement,
         candidates=[strong_base, perfect_match],
     )
@@ -94,8 +91,7 @@ def test_requirement_fit_can_out_rank_s_base() -> None:
 
 def test_hard_constraints_filtering() -> None:
     selector = AssistantAgentSelector()
-    requirement = RoleRequirement(
-        role="Dev",
+    requirement = Requirement(
         skills={"python"},
         hard_constraints=RequirementHardConstraints(required_tools={"k8s"}),
     )
@@ -116,7 +112,6 @@ def test_hard_constraints_filtering() -> None:
     )
 
     decision = selector.select(
-        role="Dev",
         requirement=requirement,
         candidates=[ok, reject],
     )
@@ -153,8 +148,7 @@ def test_tie_break_prefers_lower_fault_volume() -> None:
     )
 
     decision = selector.select(
-        role="Dev",
-        requirement=RoleRequirement(role="Dev", skills={"python"}),
+        requirement=Requirement(skills={"python"}),
         candidates=[penalized, good_record],
     )
 
@@ -169,7 +163,7 @@ def test_cold_start_quota_enforced() -> None:
         cold_start_overflow_penalty=0.3,
     )
     selector = AssistantAgentSelector(config=config)
-    requirement = RoleRequirement(role="Dev")
+    requirement = Requirement()
 
     veteran = _profile(
         agent_id="vet",
@@ -196,7 +190,6 @@ def test_cold_start_quota_enforced() -> None:
     )
 
     decision = selector.select(
-        role="Dev",
         requirement=requirement,
         candidates=[cold_1, cold_2, veteran],
     )
@@ -208,7 +201,7 @@ def test_cold_start_quota_enforced() -> None:
 
 def test_audit_log_tracks_rounds() -> None:
     selector = AssistantAgentSelector()
-    requirement = RoleRequirement(role="Dev")
+    requirement = Requirement()
     agent = _profile(
         agent_id="solo",
         performance=0.9,
@@ -217,8 +210,8 @@ def test_audit_log_tracks_rounds() -> None:
         tools={"docker"},
     )
 
-    selector.select(role="Dev", requirement=requirement, candidates=[agent])
-    selector.select(role="Dev", requirement=requirement, candidates=[agent], batch_index=1)
+    selector.select(requirement=requirement, candidates=[agent])
+    selector.select(requirement=requirement, candidates=[agent], batch_index=1)
 
     rounds = selector.last_rounds()
     assert len(rounds) == 2

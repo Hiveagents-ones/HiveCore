@@ -1,0 +1,142 @@
+version: '3.8'
+
+services:
+  # PostgreSQL 数据库
+  db:
+    image: postgres:15
+    container_name: membership_db
+    environment:
+      POSTGRES_DB: membership_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres123
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - membership_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # FastAPI 后端服务
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: membership_backend
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres123@db:5432/membership_db
+      - SECRET_KEY=your-secret-key-here
+      - ALGORITHM=HS256
+      - ACCESS_TOKEN_EXPIRE_MINUTES=30
+      - ALIPAY_APP_ID=your-alipay-app-id
+      - ALIPAY_PRIVATE_KEY=your-alipay-private-key
+      - WECHAT_APP_ID=your-wechat-app-id
+      - WECHAT_MCH_ID=your-wechat-mch-id
+      - WECHAT_API_KEY=your-wechat-api-key
+      - STRIPE_PUBLIC_KEY=your-stripe-public-key
+      - STRIPE_SECRET_KEY=your-stripe-secret-key
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - membership_network
+    volumes:
+      - ./backend:/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Vue 3 前端服务
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: membership_frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    networks:
+      - membership_network
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    command: npm run dev
+
+  # Nginx 反向代理
+  nginx:
+    image: nginx:alpine
+    container_name: membership_nginx
+    ports:
+      - "80:80"
+    depends_on:
+      - frontend
+      - backend
+    networks:
+      - membership_network
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf
+
+  # Redis 缓存服务
+  redis:
+    image: redis:7-alpine
+    container_name: membership_redis
+    ports:
+      - "6379:6379"
+    networks:
+      - membership_network
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+
+
+  # Prometheus 监控
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: membership_prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - membership_network
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+
+  # Grafana 可视化
+  grafana:
+    image: grafana/grafana:latest
+    container_name: membership_grafana
+    ports:
+      - "3001:3000"
+    networks:
+      - membership_network
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin123
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources
+
+volumes:
+  postgres_data:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  membership_network:
+    driver: bridge

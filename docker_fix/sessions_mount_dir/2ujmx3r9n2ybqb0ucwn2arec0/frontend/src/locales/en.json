@@ -1,0 +1,112 @@
+{
+  "common": {
+    "confirm": "Confirm",
+    "cancel": "Cancel",
+    "save": "Save",
+    "delete": "Delete",
+    "edit": "Edit",
+    "back": "Back",
+    "loading": "Loading...",
+    "error": "Error",
+    "success": "Success",
+    "warning": "Warning",
+    "info": "Info"
+  },
+  "navigation": {
+    "home": "Home",
+    "courses": "Courses",
+    "profile": "Profile",
+    "bookings": "My Bookings"
+  },
+  "course": {
+    "list": {
+      "title": "Course List",
+      "noCourses": "No courses available",
+      "filter": {
+        "all": "All",
+        "yoga": "Yoga",
+        "cycling": "Cycling",
+        "strength": "Strength Training",
+        "cardio": "Cardio"
+      },
+      "search": "Search courses..."
+    },
+    "detail": {
+      "title": "Course Details",
+      "instructor": "Instructor",
+      "duration": "Duration",
+      "difficulty": "Difficulty",
+      "description": "Description",
+      "schedule": "Schedule",
+      "spotsLeft": "Spots Left",
+      "bookNow": "Book Now",
+      "full": "Fully Booked",
+      "prerequisites": "Prerequisites",
+      "equipment": "Equipment Required"
+    },
+    "booking": {
+      "success": "Course booked successfully!",
+      "error": "Failed to book course",
+      "confirmTitle": "Confirm Booking",
+      "confirmMessage": "Are you sure you want to book this course?",
+      "alreadyBooked": "You have already booked this course"
+    }
+  },
+  "booking": {
+    "title": "My Bookings",
+    "noBookings": "No bookings found",
+    "upcoming": "Upcoming",
+    "past": "Past",
+    "cancelled": "Cancelled",
+    "status": {
+      "confirmed": "Confirmed",
+      "pending": "Pending",
+      "cancelled": "Cancelled",
+      "completed": "Completed"
+    },
+    "cancel": {
+      "title": "Cancel Booking",
+      "message": "Are you sure you want to cancel this booking?",
+      "success": "Booking cancelled successfully",
+      "error": "Failed to cancel booking"
+    }
+  },
+  "profile": {
+    "title": "My Profile",
+    "personalInfo": "Personal Information",
+    "name": "Name",
+    "email": "Email",
+    "phone": "Phone",
+    "membership": "Membership",
+    "membershipType": {
+      "basic": "Basic",
+      "premium": "Premium",
+      "vip": "VIP"
+    },
+    "joinDate": "Member Since",
+    "preferences": "Preferences",
+    "notifications": "Notifications",
+    "language": "Language"
+  },
+  "auth": {
+    "login": "Login",
+    "logout": "Logout",
+    "register": "Register",
+    "username": "Username",
+    "password": "Password",
+    "confirmPassword": "Confirm Password",
+    "forgotPassword": "Forgot Password?",
+    "rememberMe": "Remember Me",
+    "loginError": "Invalid username or password",
+    "registerSuccess": "Registration successful",
+    "registerError": "Registration failed"
+  },
+  "errors": {
+    "404": "Page not found",
+    "500": "Server error",
+    "network": "Network error",
+    "unauthorized": "Unauthorized access",
+    "forbidden": "Access forbidden",
+    "timeout": "Request timeout"
+  }
+}

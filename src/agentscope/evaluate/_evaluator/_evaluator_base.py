@@ -153,14 +153,16 @@ class EvaluatorBase:
                             task.id
                         ] = eval_result.result
 
-            print("Repeat ID:", repeat_id)
+            from ...scripts._observability import get_logger
+            logger = get_logger()
+            logger.info(f"Repeat ID: {repeat_id}")
 
             for metric, value in current_repeat["metrics"].items():
-                print("\tMetric:", metric)
-                print("\t\tType:", value["type"])
-                print("\t\tInvolved tasks:", value["involved_tasks"])
-                print("\t\tCompleted tasks:", value["completed_tasks"])
-                print("\t\tIncomplete tasks:", value["incomplete_tasks"])
+                logger.info(f"\tMetric: {metric}")
+                logger.info(f"\t\tType: {value['type']}")
+                logger.info(f"\t\tInvolved tasks: {value['involved_tasks']}")
+                logger.info(f"\t\tCompleted tasks: {value['completed_tasks']}")
+                logger.info(f"\t\tIncomplete tasks: {value['incomplete_tasks']}")
 
                 if value["type"] == MetricType.CATEGORY:
                     # Count the distribution
@@ -177,8 +179,8 @@ class EvaluatorBase:
                         "min": min(scores),
                     }
 
-                print(
-                    "\t\tAggregation:",
+                logger.info(
+                    "\t\tAggregation: " +
                     json.dumps(
                         value["aggregation"],
                         indent=4,

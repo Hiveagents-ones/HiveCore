@@ -1,0 +1,107 @@
+{
+  "common": {
+    "confirm": "Confirm",
+    "cancel": "Cancel",
+    "save": "Save",
+    "delete": "Delete",
+    "edit": "Edit",
+    "add": "Add",
+    "search": "Search",
+    "reset": "Reset",
+    "submit": "Submit",
+    "back": "Back",
+    "loading": "Loading...",
+    "noData": "No Data",
+    "operation": "Operation",
+    "status": "Status",
+    "createTime": "Create Time",
+    "updateTime": "Update Time",
+    "actions": "Actions",
+    "yes": "Yes",
+    "no": "No",
+    "success": "Success",
+    "error": "Error",
+    "warning": "Warning",
+    "info": "Info"
+  },
+  "menu": {
+    "memberManagement": "Member Management",
+    "memberList": "Member List",
+    "memberForm": "Member Form"
+  },
+  "member": {
+    "title": "Member Management",
+    "list": {
+      "title": "Member List",
+      "name": "Name",
+      "contact": "Contact",
+      "level": "Level",
+      "effectiveDate": "Effective Date",
+      "expiryDate": "Expiry Date",
+      "status": "Status",
+      "actions": "Actions",
+      "addMember": "Add Member",
+      "searchPlaceholder": "Search by name or contact",
+      "confirmDelete": "Are you sure to delete this member?",
+      "deleteSuccess": "Member deleted successfully",
+      "deleteFailed": "Failed to delete member",
+      "loadFailed": "Failed to load member list"
+    },
+    "form": {
+      "createTitle": "Create Member",
+      "editTitle": "Edit Member",
+      "name": "Name",
+      "namePlaceholder": "Please enter member name",
+      "nameRequired": "Name is required",
+      "contact": "Contact",
+      "contactPlaceholder": "Please enter contact information",
+      "contactRequired": "Contact is required",
+      "level": "Member Level",
+      "levelPlaceholder": "Please select member level",
+      "levelRequired": "Member level is required",
+      "effectiveDate": "Effective Date",
+      "effectiveDatePlaceholder": "Please select effective date",
+      "effectiveDateRequired": "Effective date is required",
+      "expiryDate": "Expiry Date",
+      "expiryDatePlaceholder": "Please select expiry date",
+      "expiryDateRequired": "Expiry date is required",
+      "status": "Status",
+      "statusActive": "Active",
+      "statusInactive": "Inactive",
+      "createSuccess": "Member created successfully",
+      "createFailed": "Failed to create member",
+      "updateSuccess": "Member updated successfully",
+      "updateFailed": "Failed to update member",
+      "loadFailed": "Failed to load member data"
+    },
+    "level": {
+      "bronze": "Bronze",
+      "silver": "Silver",
+      "gold": "Gold",
+      "platinum": "Platinum",
+      "diamond": "Diamond"
+    },
+    "status": {
+      "active": "Active",
+      "inactive": "Inactive",
+      "expired": "Expired"
+    }
+  },
+  "validation": {
+    "required": "This field is required",
+    "email": "Please enter a valid email address",
+    "phone": "Please enter a valid phone number",
+    "minLength": "Must be at least {min} characters",
+    "maxLength": "Cannot exceed {max} characters",
+    "dateRange": "End date must be after start date"
+  },
+  "message": {
+    "operationSuccess": "Operation successful",
+    "operationFailed": "Operation failed",
+    "networkError": "Network error, please try again",
+    "serverError": "Server error, please contact administrator",
+    "unauthorized": "Unauthorized access",
+    "forbidden": "Access denied",
+    "notFound": "Resource not found"
+  }
+}

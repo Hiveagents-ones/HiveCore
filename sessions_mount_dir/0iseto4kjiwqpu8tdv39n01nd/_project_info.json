@@ -1,0 +1,31 @@
+{
+  "project_type": "web",
+  "files": [
+    "backend/app/main.py",
+    "backend/app/core/config.py",
+    "backend/alembic.ini",
+    "backend/app/core/security.py",
+    "backend/migrations/env.py",
+    "backend/app/services/audit.py",
+    "frontend/src/router/index.js",
+    "frontend/src/stores/member.js",
+    "frontend/src/i18n/index.js",
+    "backend/app/models/member.py",
+    "frontend/src/i18n/messages_zh.json",
+    "frontend/src/i18n/messages_en.json",
+    "backend/app/schemas/member.py",
+    "frontend/src/views/MemberList.vue",
+    "frontend/src/views/MemberForm.vue",
+    "backend/app/api/v1/member.py",
+    "Dockerfile",
+    "k8s-deploy.yaml",
+    "scripts/docker-deploy.sh",
+    "docs/api.html"
+  ],
+  "setup_commands": [],
+  "setup_executed": false,
+  "run_command": "",
+  "entry_point": "",
+  "runtime_mode": true,
+  "sandbox_id": "runtime_sandbox_container_0iseto4kjiwqpu8tdv39n01nd"
+}

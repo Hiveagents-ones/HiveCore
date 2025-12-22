@@ -1,0 +1,46 @@
+{
+  "register": {
+    "title": "Member Registration",
+    "form": {
+      "name": {
+        "label": "Full Name",
+        "placeholder": "Enter your full name",
+        "required": "Full name is required"
+      },
+      "phone": {
+        "label": "Phone Number",
+        "placeholder": "Enter your phone number",
+        "required": "Phone number is required",
+        "invalid": "Please enter a valid phone number"
+      },
+      "idCard": {
+        "label": "ID Card Number",
+        "placeholder": "Enter your ID card number",
+        "required": "ID card number is required",
+        "invalid": "Please enter a valid ID card number"
+      },
+      "email": {
+        "label": "Email Address",
+        "placeholder": "Enter your email address",
+        "required": "Email address is required",
+        "invalid": "Please enter a valid email address"
+      },
+      "submit": "Register",
+      "submitting": "Registering..."
+    },
+    "success": {
+      "title": "Registration Successful",
+      "message": "Your member ID is {memberId}",
+      "description": "Registration date: {date}",
+      "status": "Member status: Active",
+      "button": "Go to Login"
+    },
+    "error": {
+      "title": "Registration Failed",
+      "duplicate": "This phone number or ID card is already registered",
+      "network": "Network error, please try again",
+      "server": "Server error, please try again later",
+      "unknown": "Unknown error occurred"
+    }
+  }
+}

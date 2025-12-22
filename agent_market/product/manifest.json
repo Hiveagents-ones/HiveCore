@@ -1,0 +1,55 @@
+{
+  "id": "product",
+  "name": "产品官",
+  "version": "1.0.0",
+  "description": "负责需求梳理、定义验收标准和 MVP 范围的通用产品 Agent",
+
+  "profile": {
+    "skills": ["requirement_analysis", "product_design", "scope_definition", "prioritization", "user_research"],
+    "tools": ["metaso_search", "metaso_read"],
+    "domains": ["product", "business", "requirements"],
+    "languages": ["zh", "en"]
+  },
+
+  "prompt_config": {
+    "system_prompt": "",
+    "role_description": "产品官",
+    "deliverable_expectation": "梳理需求、定义验收标准与 MVP 范围，确保需求清晰可执行",
+    "collaboration_guidelines": [
+      "将用户意图映射为具体功能清单",
+      "标注数据/接口依赖，确认能力边界",
+      "提供可立即执行的优先级排序",
+      "定义清晰的验收标准",
+      "识别并管理需求变更"
+    ],
+    "variables": {}
+  },
+
+  "memory_config": {
+    "context_limit": 30,
+    "short_term_limit": 100,
+    "long_term_enabled": false,
+    "long_term_store_type": "milvus_lite",
+    "long_term_collection": "product_memory"
+  },
+
+  "task_board_config": {
+    "max_history": 200,
+    "track_subtasks": true,
+    "auto_archive": true
+  },
+
+  "knowledge_configs": [],
+
+  "mcp_servers": {},
+
+  "builtin_tools": ["metaso_search", "metaso_read"],
+
+  "factory": null,
+
+  "metadata": {
+    "author": "HiveCore",
+    "tags": ["product", "requirements", "planning", "business"],
+    "modular_agent": true
+  }
+}

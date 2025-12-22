@@ -1,0 +1,76 @@
+{
+  "common": {
+    "submit": "Submit",
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "loading": "Loading...",
+    "success": "Success",
+    "error": "Error",
+    "required": "This field is required",
+    "back": "Back",
+    "next": "Next",
+    "finish": "Finish"
+  },
+  "register": {
+    "title": "Member Registration",
+    "steps": {
+      "personal": "Personal Information",
+      "package": "Select Package",
+      "payment": "Payment"
+    },
+    "form": {
+      "name": {
+        "label": "Full Name",
+        "placeholder": "Please enter your full name"
+      },
+      "phone": {
+        "label": "Phone Number",
+        "placeholder": "Please enter your phone number"
+      },
+      "idCard": {
+        "label": "ID Card Number",
+        "placeholder": "Please enter your ID card number"
+      },
+      "package": {
+        "label": "Membership Package",
+        "placeholder": "Please select a package"
+      },
+      "paymentMethod": {
+        "label": "Payment Method",
+        "placeholder": "Please select payment method"
+      }
+    },
+    "packages": {
+      "basic": {
+        "name": "Basic",
+        "description": "Access to gym equipment during off-peak hours",
+        "price": "$29/month"
+      },
+      "standard": {
+        "name": "Standard",
+        "description": "Full access to gym equipment and group classes",
+        "price": "$59/month"
+      },
+      "premium": {
+        "name": "Premium",
+        "description": "All access including personal training sessions",
+        "price": "$99/month"
+      }
+    },
+    "payment": {
+      "methods": {
+        "card": "Credit/Debit Card",
+        "alipay": "Alipay",
+        "wechat": "WeChat Pay"
+      },
+      "amount": "Amount",
+      "payNow": "Pay Now"
+    },
+    "messages": {
+      "registrationSuccess": "Registration successful!",
+      "paymentSuccess": "Payment completed successfully!",
+      "invalidPhone": "Please enter a valid phone number",
+      "invalidIdCard": "Please enter a valid ID card number"
+    }
+  }
+}

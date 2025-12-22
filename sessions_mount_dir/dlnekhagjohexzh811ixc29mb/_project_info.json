@@ -1,0 +1,21 @@
+{
+  "project_type": "web",
+  "files": [
+    "backend/app/main.py",
+    "frontend/src/App.vue",
+    "frontend/src/router.js",
+    "backend/app/database.py",
+    "frontend/src/api/courses.js",
+    "backend/app/schemas/courses.py",
+    "backend/app/routers/courses.py",
+    "frontend/src/stores/courseStore.js",
+    "frontend/src/views/CourseListView.vue",
+    "frontend/src/views/CourseDetailView.vue"
+  ],
+  "setup_commands": [],
+  "setup_executed": false,
+  "run_command": "",
+  "entry_point": "",
+  "runtime_mode": true,
+  "sandbox_id": "runtime_sandbox_container_dlnekhagjohexzh811ixc29mb"
+}

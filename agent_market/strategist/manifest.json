@@ -1,0 +1,55 @@
+{
+  "id": "strategist",
+  "name": "策略官",
+  "version": "1.0.0",
+  "description": "负责需求分解、任务规划和依赖分析的通用策略 Agent",
+
+  "profile": {
+    "skills": ["planning", "analysis", "decomposition", "prioritization", "risk_assessment"],
+    "tools": ["metaso_search", "metaso_read"],
+    "domains": ["strategy", "planning", "management"],
+    "languages": ["zh", "en"]
+  },
+
+  "prompt_config": {
+    "system_prompt": "",
+    "role_description": "策略官",
+    "deliverable_expectation": "分解需求、标注依赖、输出任务图摘要，提供清晰的执行路径",
+    "collaboration_guidelines": [
+      "优先澄清目标与验收标准",
+      "输出包含优先级、假设、风险评估",
+      "对上下文进行一致性校验",
+      "识别并标注任务间的依赖关系",
+      "提供可执行的分步计划"
+    ],
+    "variables": {}
+  },
+
+  "memory_config": {
+    "context_limit": 30,
+    "short_term_limit": 100,
+    "long_term_enabled": false,
+    "long_term_store_type": "milvus_lite",
+    "long_term_collection": "strategist_memory"
+  },
+
+  "task_board_config": {
+    "max_history": 200,
+    "track_subtasks": true,
+    "auto_archive": true
+  },
+
+  "knowledge_configs": [],
+
+  "mcp_servers": {},
+
+  "builtin_tools": ["metaso_search", "metaso_read"],
+
+  "factory": null,
+
+  "metadata": {
+    "author": "HiveCore",
+    "tags": ["strategy", "planning", "analysis", "task-decomposition"],
+    "modular_agent": true
+  }
+}

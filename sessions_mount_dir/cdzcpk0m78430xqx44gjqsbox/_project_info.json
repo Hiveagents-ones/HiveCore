@@ -1,0 +1,20 @@
+{
+  "project_type": "web",
+  "files": [
+    "backend/app/main.py",
+    "backend/app/database.py",
+    "backend/app/routers/members.py",
+    "backend/app/schemas/members.py",
+    "frontend/src/views/MemberListView.vue",
+    "frontend/src/views/MemberDetailView.vue",
+    "frontend/src/api/members.js",
+    "frontend/src/stores/memberStore.js",
+    "docker-compose.yml"
+  ],
+  "setup_commands": [],
+  "setup_executed": false,
+  "run_command": "",
+  "entry_point": "",
+  "runtime_mode": true,
+  "sandbox_id": "runtime_sandbox_container_cdzcpk0m78430xqx44gjqsbox"
+}

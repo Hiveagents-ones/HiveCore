@@ -1,0 +1,27 @@
+{
+  "common": {
+    "loading": "Loading",
+    "save": "Save",
+    "saving": "Saving...",
+    "cancel": "Cancel",
+    "edit": "Edit",
+    "delete": "Delete"
+  },
+  "course": {
+    "schedule": "Course Schedule",
+    "management": "Course Management",
+    "coach": "Coach",
+    "time": "Time",
+    "location": "Location",
+    "capacity": "Capacity",
+    "name": "Course Name",
+    "description": "Description",
+    "enroll": "Enroll",
+    "full": "Full",
+    "createCourse": "Create Course",
+    "editCourse": "Edit Course",
+    "searchPlaceholder": "Search courses...",
+    "allCourses": "All Courses",
+    "noCourses": "No courses available"
+  }
+}

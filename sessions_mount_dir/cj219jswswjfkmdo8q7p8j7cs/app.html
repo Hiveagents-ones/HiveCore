@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hello World - Internationalized</title>
+    <!-- Content Security Policy to prevent XSS attacks -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'self'; object-src 'none'; frame-ancestors 'none';">
+    <style>
+        /* Basic reset and centering styles */
+        body {
+            margin: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #f0f2f5;
+            color: #333;
+        }
+        main {
+            text-align: center;
+        }
+        h1 {
+            font-size: 4rem;
+            margin: 0;
+            color: #1a1a1a;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.1);
+        }
+        .language-selector {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+        }
+        .language-selector select {
+            padding: 8px 12px;
+            border-radius: 4px;
+            border: 1px solid #ddd;
+            background: white;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div class="language-selector">
+        <select id="languageSelect" onchange="changeLanguage()">
+            <option value="en">English</option>
+            <option value="zh">中文</option>
+            <option value="es">Español</option>
+            <option value="fr">Français</option>
+        </select>
+    </div>
+
+    <main>
+        <h1 id="greeting">Hello World</h1>
+    </main>
+
+    <script>
+        // --- Internationalization (i18n) Support ---
+        const translations = {
+            en: { greeting: 'Hello World', title: 'Hello World - Internationalized' },
+            zh: { greeting: '你好世界', title: '你好世界 - 国际化' },
+            es: { greeting: 'Hola Mundo', title: 'Hola Mundo - Internacionalizado' },
+            fr: { greeting: 'Bonjour le monde', title: 'Bonjour le monde - Internationalisé' }
+        };
+
+        // --- Performance Monitoring ---
+        function logPerformance() {
+            if (window.performance && window.performance.timing) {
+                const loadTime = window.performance.timing.loadEventEnd - window.performance.timing.navigationStart;
+                console.log(`Page load time: ${loadTime}ms`);
+                
+                // Log performance metrics
+                const perfData = {
+                    loadTime: loadTime,
+                    domContentLoaded: window.performance.timing.domContentLoadedEventEnd - window.performance.timing.navigationStart,
+                    timestamp: new Date().toISOString()
+                };
+                console.log('Performance metrics:', perfData);
+            }
+        }
+
+        // --- Error Logging ---
+        function logError(message, source, lineno, colno, error) {
+            const errorData = {
+                message: message,
+                source: source,
+                line: lineno,
+                column: colno,
+                error: error ? error.stack : '',
+                timestamp: new Date().toISOString()
+            };
+            console.error('Error logged:', errorData);
+            
+            // Store errors in localStorage for debugging
+            const errors = JSON.parse(localStorage.getItem('pageErrors') || '[]');
+            errors.push(errorData);
+            localStorage.setItem('pageErrors', JSON.stringify(errors));
+        }
+
+        // --- Language Management ---
+        function changeLanguage() {
+            const select = document.getElementById('languageSelect');
+            const lang = select.value;
+            const translation = translations[lang];
+            
+            if (translation) {
+                document.getElementById('greeting').textContent = translation.greeting;
+                document.title = translation.title;
+                document.documentElement.lang = lang;
+                
+                // Save language preference
+                localStorage.setItem('preferredLanguage', lang);
+                console.log(`Language changed to: ${lang}`);
+            }
+        }
+
+        function initializeLanguage() {
+            // Check for saved language preference
+            const savedLang = localStorage.getItem('preferredLanguage');
+            if (savedLang && translations[savedLang]) {
+                document.getElementById('languageSelect').value = savedLang;
+                changeLanguage();
+            }
+            
+            // Check browser language
+            if (!savedLang) {
+                const browserLang = navigator.language.split('-')[0];
+                if (translations[browserLang]) {
+                    document.getElementById('languageSelect').value = browserLang;
+                    changeLanguage();
+                }
+            }
+        }
+
+        // --- Module Pattern for Extensibility ---
+        const HelloWorldApp = (function() {
+            return {
+                init: function() {
+                    console.log('Hello World App initialized');
+                    initializeLanguage();
+                    logPerformance();
+                },
+                
+                // Public API for extensibility
+                addTranslation: function(lang, translation) {
+                    translations[lang] = translation;
+                    console.log(`Added translation for ${lang}`);
+                },
+                
+                getCurrentTranslation: function() {
+                    const lang = document.getElementById('languageSelect').value;
+                    return translations[lang];
+                },
+                
+                logCustomError: function(message, details) {
+                    logError(message, 'Custom', 0, 0, new Error(details));
+                }
+            };
+        })();
+
+        // --- Event Listeners ---
+        window.addEventListener('load', function() {
+            HelloWorldApp.init();
+        });
+
+        window.addEventListener('error', function(event) {
+            logError(event.message, event.filename, event.lineno, event.colno, event.error);
+        });
+
+        window.addEventListener('unhandledrejection', function(event) {
+            logError('Unhandled Promise Rejection', 'Promise', 0, 0, event.reason);
+        });
+
+        // --- Initialize on DOM Ready ---
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', HelloWorldApp.init);
+        } else {
+            HelloWorldApp.init();
+        }
+
+        // --- Development Helper ---
+        if (typeof window !== 'undefined') {
+            window.HelloWorldApp = HelloWorldApp;
+        }
+    </script>
+</body>
+</html>

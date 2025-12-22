@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Iterable
 
-from ..aa import CandidateRanking, RoleRequirement
+from ..aa import CandidateRanking, Requirement
 
 
 class TaskStatus(str, Enum):
@@ -21,7 +21,7 @@ class TaskStatus(str, Enum):
 @dataclass
 class TaskNode:
     node_id: str
-    requirement: RoleRequirement
+    requirement: Requirement
     assigned_agent_id: str | None = None
     status: TaskStatus = TaskStatus.PENDING
     dependencies: set[str] = field(default_factory=set)
@@ -102,7 +102,7 @@ class TaskGraphBuilder:
 
     def build(
         self,
-        requirements: dict[str, RoleRequirement],
+        requirements: dict[str, Requirement],
         rankings: dict[str, CandidateRanking],
         edges: Iterable[tuple[str, str]] | None = None,
     ) -> TaskGraph:

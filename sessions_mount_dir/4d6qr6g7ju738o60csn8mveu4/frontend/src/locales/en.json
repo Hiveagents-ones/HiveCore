@@ -1,0 +1,42 @@
+{
+  "common": {
+    "submit": "Submit",
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "loading": "Loading...",
+    "error": "Error",
+    "success": "Success"
+  },
+  "register": {
+    "title": "Member Registration",
+    "name": "Full Name",
+    "namePlaceholder": "Enter your full name",
+    "phone": "Phone Number",
+    "phonePlaceholder": "Enter your phone number",
+    "idCard": "ID Card Number",
+    "idCardPlaceholder": "Enter your ID card number",
+    "membershipType": "Membership Type",
+    "membershipMonthly": "Monthly Card",
+    "membershipQuarterly": "Quarterly Card",
+    "membershipYearly": "Yearly Card",
+    "privacyPolicy": "Privacy Policy",
+    "privacyPolicyText": "I agree to the {0}",
+    "privacyPolicyLink": "Privacy Policy",
+    "registerButton": "Register Now",
+    "successMessage": "Registration successful! Your member ID is: {0}",
+    "errors": {
+      "nameRequired": "Name is required",
+      "nameInvalid": "Please enter a valid name",
+      "phoneRequired": "Phone number is required",
+      "phoneInvalid": "Please enter a valid phone number",
+      "idCardRequired": "ID card number is required",
+      "idCardInvalid": "Please enter a valid ID card number",
+      "membershipRequired": "Please select a membership type",
+      "privacyRequired": "You must agree to the privacy policy",
+      "networkError": "Network error, please try again",
+      "serverError": "Server error, please try again later",
+      "duplicatePhone": "This phone number is already registered",
+      "duplicateIdCard": "This ID card number is already registered"
+    }
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "project_type": "web",
+  "files": [
+    "backend/app/main.py",
+    "backend/app/database.py",
+    "frontend/src/App.vue",
+    "frontend/src/main.js",
+    "backend/app/routers/members.py",
+    "frontend/src/components/MemberForm.vue",
+    "frontend/src/api/members.js",
+    "frontend/src/views/MemberList.vue",
+    "frontend/src/views/MemberDetail.vue",
+    "frontend/src/stores/member.js"
+  ],
+  "setup_commands": [],
+  "setup_executed": false,
+  "run_command": "",
+  "entry_point": "",
+  "runtime_mode": true,
+  "sandbox_id": "runtime_sandbox_container_1ty6k4hez0hxbc80y7yr1b41w"
+}

@@ -126,11 +126,13 @@ class StaticScore:
 
 @dataclass
 class AgentProfile:
-    """Full profile describing an available Agent candidate."""
+    """Full profile describing an available Agent candidate.
+
+    Agent selection is based on `capabilities` matching (skills, tools, domains, etc.).
+    """
 
     agent_id: str
     name: str
-    role: str
     static_score: StaticScore
     capabilities: AgentCapabilities
     fault_ledger: FaultLedger = field(default_factory=FaultLedger)
@@ -140,6 +142,65 @@ class AgentProfile:
     is_cold_start: bool = False
     metadata: dict[str, str] = field(default_factory=dict)
     s_base: float | None = None
+    # Cold start learning fields
+    task_count: int = 0
+    cold_start_threshold: int = 5
+    learning_rate: float = 0.1
+
+    def update_after_task(
+        self,
+        quality_score: float,
+        accepted: bool = True,
+        user_rating: float | None = None,
+    ) -> None:
+        """Update scores after task completion.
+
+        Uses exponential moving average to blend historical performance
+        with recent task results.
+
+        Args:
+            quality_score: Quality score of the completed task (0.0-1.0).
+            accepted: Whether the task result was accepted.
+            user_rating: Optional user rating (0.0-1.0) to update recognition.
+        """
+        current = self.static_score
+
+        if accepted:
+            # EMA update for performance: new = (1-α) * old + α * new_value
+            new_performance = (
+                (1 - self.learning_rate) * current.performance
+                + self.learning_rate * quality_score
+            )
+            new_fault_impact = current.fault_impact
+        else:
+            # Failed task: decrease performance and increase fault impact
+            new_performance = current.performance * 0.95
+            new_fault_impact = current.fault_impact + 0.1  # Fault penalty
+
+        # Update recognition only if user provides explicit rating
+        new_recognition = current.recognition
+        if user_rating is not None:
+            new_recognition = (
+                (1 - self.learning_rate) * current.recognition
+                + self.learning_rate * user_rating
+            )
+
+        self.static_score = StaticScore(
+            performance=new_performance,
+            brand=current.brand,  # Brand is manually controlled, never auto-update
+            recognition=new_recognition,
+            fault_impact=new_fault_impact,
+        )
+
+        self.task_count += 1
+        self.recent_success_at = _utcnow() if accepted else self.recent_success_at
+
+        # Exit cold start after threshold
+        if self.task_count >= self.cold_start_threshold:
+            self.is_cold_start = False
+
+        # Reset cached s_base so it gets recomputed
+        self.s_base = None
 
     def compute_s_base(
         self,
@@ -181,10 +242,9 @@ class RequirementHardConstraints:
 
 
 @dataclass
-class RoleRequirement:
-    """Dynamic requirement per project / role."""
+class Requirement:
+    """Dynamic requirement for agent selection based on capabilities."""
 
-    role: str
     skills: set[str] = field(default_factory=set)
     tools: set[str] = field(default_factory=set)
     domains: set[str] = field(default_factory=set)
@@ -196,6 +256,10 @@ class RoleRequirement:
     )
     weight_overrides: dict[str, float] = field(default_factory=dict)
     notes: str | None = None
+
+
+# Alias for backward compatibility
+RoleRequirement = Requirement
 
 
 @dataclass
@@ -225,7 +289,7 @@ class CandidateRanking:
 class AAScoringConfig:
     """Global configuration for AA selection and scoring."""
 
-    top_n: int = 5
+    top_n: int = 20  # Ensure all candidates including spawned ones are evaluated
     requirement_weight: float = 0.35
     cold_start_bonus: float = 0.05
     cold_start_quota: int = 1
@@ -250,15 +314,15 @@ class AAScoringConfig:
     )
     tolerance: float = 1e-6
     log_round_limit: int = 20
+    min_fit_threshold: float = 0.3  # Minimum requirement fit score to accept a match
 
 
 @dataclass
 class SelectionRound:
     """A recorded selection round for audit purposes."""
 
-    role: str
     batch_index: int
-    requirement: RoleRequirement
+    requirement: Requirement
     candidates: list[CandidateRanking]
     decision_source: Literal["system", "user"]
     selected_agent_id: str | None

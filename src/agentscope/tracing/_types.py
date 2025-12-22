@@ -26,3 +26,11 @@ class SpanAttributes:
     INPUT = "input"
     META = "metadata"
     PROJECT_RUN_ID = "project.run_id"
+
+    # Observability attributes for token usage and cost tracking
+    USAGE_TOKENS_INPUT = "usage.tokens.input"
+    USAGE_TOKENS_OUTPUT = "usage.tokens.output"
+    USAGE_TOKENS_TOTAL = "usage.tokens.total"
+    USAGE_COST_USD = "usage.cost.usd"
+    USAGE_DURATION_MS = "usage.duration.ms"
+    MODEL_NAME = "llm.model_name"

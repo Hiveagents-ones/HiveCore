@@ -1,0 +1,36 @@
+{
+  "coachScheduling": {
+    "title": "Coach Scheduling Management",
+    "description": "Administrators can set coach working hours, course assignments and leave management",
+    "priority": "P1",
+    "type": "Workflow",
+    "actions": {
+      "createSchedule": "Create Schedule",
+      "assignCourse": "Assign Course",
+      "manageLeave": "Manage Leave"
+    },
+    "tableHeaders": {
+      "coachName": "Coach Name",
+      "workingHours": "Working Hours",
+      "assignedCourses": "Assigned Courses",
+      "status": "Status",
+      "actions": "Actions"
+    },
+    "statusOptions": {
+      "available": "Available",
+      "onLeave": "On Leave",
+      "assigned": "Assigned"
+    },
+    "confirmationMessages": {
+      "deleteSchedule": "Are you sure you want to delete this schedule?",
+      "approveLeave": "Approve this leave request?",
+      "rejectLeave": "Reject this leave request?"
+    },
+    "notifications": {
+      "scheduleCreated": "Schedule created successfully",
+      "courseAssigned": "Course assigned successfully",
+      "leaveApproved": "Leave approved successfully",
+      "leaveRejected": "Leave rejected successfully"
+    }
+  }
+}

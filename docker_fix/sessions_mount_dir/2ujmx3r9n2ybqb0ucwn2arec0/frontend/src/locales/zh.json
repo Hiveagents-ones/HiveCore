@@ -1,0 +1,66 @@
+{
+  "common": {
+    "confirm": "确认",
+    "cancel": "取消",
+    "submit": "提交",
+    "back": "返回",
+    "loading": "加载中...",
+    "error": "错误",
+    "success": "成功",
+    "retry": "重试"
+  },
+  "navigation": {
+    "courses": "课程",
+    "myBookings": "我的预约",
+    "profile": "个人中心"
+  },
+  "courseList": {
+    "title": "课程列表",
+    "noCourses": "暂无课程",
+    "filter": {
+      "all": "全部",
+      "yoga": "瑜伽",
+      "cycling": "动感单车",
+      "strength": "力量训练"
+    },
+    "searchPlaceholder": "搜索课程名称或教练",
+    "spotsLeft": "剩余 {count} 个名额",
+    "noSpotsLeft": "已满员"
+  },
+  "courseDetail": {
+    "title": "课程详情",
+    "instructor": "教练",
+    "duration": "时长",
+    "difficulty": "难度",
+    "description": "课程描述",
+    "schedule": "上课时间",
+    "location": "上课地点",
+    "spotsAvailable": "可预约名额",
+    "bookNow": "立即预约",
+    "bookingSuccess": "预约成功！",
+    "bookingFailed": "预约失败，请重试",
+    "alreadyBooked": "您已预约该课程",
+    "courseFull": "该课程已满员"
+  },
+  "booking": {
+    "title": "我的预约",
+    "noBookings": "暂无预约记录",
+    "bookingTime": "预约时间",
+    "courseName": "课程名称",
+    "status": {
+      "confirmed": "已确认",
+      "cancelled": "已取消",
+      "completed": "已完成"
+    },
+    "cancelBooking": "取消预约",
+    "cancelConfirm": "确定要取消这个预约吗？",
+    "cancelSuccess": "取消预约成功",
+    "cancelFailed": "取消预约失败"
+  },
+  "error": {
+    "networkError": "网络错误，请检查网络连接",
+    "serverError": "服务器错误，请稍后重试",
+    "notFound": "页面不存在",
+    "unauthorized": "请先登录"
+  }
+}

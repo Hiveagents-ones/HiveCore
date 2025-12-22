@@ -1,0 +1,32 @@
+{
+  "project_type": "web",
+  "files": [
+    "backend/app/main.py",
+    "backend/app/models.py",
+    "backend/app/schemas.py",
+    "frontend/src/router/index.js",
+    "frontend/src/stores/index.js",
+    "backend/app/core/config.py",
+    "frontend/src/utils/api.js",
+    "frontend/src/utils/crypto.js",
+    "backend/app/routers/register.py",
+    "frontend/src/stores/plan.js",
+    "backend/app/core/security.py",
+    "backend/app/database.py",
+    "frontend/src/views/RegisterView.vue",
+    "frontend/src/locales/en.json",
+    "frontend/src/locales/zh.json",
+    "frontend/src/i18n.js",
+    "docker-compose.yml",
+    "frontend/Dockerfile",
+    "backend/Dockerfile",
+    "scripts/backup.sh",
+    "README.md"
+  ],
+  "setup_commands": [],
+  "setup_executed": false,
+  "run_command": "",
+  "entry_point": "",
+  "runtime_mode": true,
+  "sandbox_id": "runtime_sandbox_container_2ujmx3r9n2ybqb0ucwn2arec0"
+}

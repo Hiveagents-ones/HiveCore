@@ -1,0 +1,146 @@
+openapi: 3.0.0
+info:
+  title: Coach Scheduling API
+  description: API for managing coach schedules
+  termsOfService: https://example.com/terms
+  contact:
+    email: api@example.com
+    url: https://example.com/contact
+  license:
+    name: Proprietary
+    url: https://example.com/license
+  version: 1.0.0
+servers:
+  - url: http://localhost:8000
+    description: Local development server
+  - url: https://api.example.com
+    description: Production server
+paths:
+  /api/v1/coaches/schedules:
+    get:
+      tags:
+        - coaches
+      summary: Get all coach schedules
+      parameters:
+        - name: skip
+          in: query
+          description: Number of items to skip
+          required: false
+          schema:
+            type: integer
+            default: 0
+        - name: limit
+          in: query
+          description: Maximum number of items to return
+          required: false
+          schema:
+            type: integer
+            default: 100
+      responses:
+        '200':
+          description: A list of coach schedules
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CoachScheduleResponse'
+    post:
+      tags:
+        - coaches
+      summary: Create a new coach schedule
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CoachScheduleCreate'
+      responses:
+        '201':
+          description: Successfully created schedule
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CoachScheduleResponse'
+        '409':
+          description: Schedule conflict
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: string
+                    example: Coach already has a schedule during this time
+components:
+  schemas:
+    CoachScheduleCreate:
+      type: object
+      required:
+        - coach_id
+        - start_time
+        - end_time
+      properties:
+        coach_id:
+          type: integer
+          description: ID of the coach
+        start_time:
+          type: string
+          format: date-time
+          description: Start time of the schedule
+        end_time:
+          type: string
+          format: date-time
+          description: End time of the schedule
+        available:
+          type: boolean
+          description: Whether the coach is available during this time
+          default: true
+    CoachScheduleResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: Schedule ID
+        coach_id:
+          type: integer
+          description: ID of the coach
+        start_time:
+          type: string
+          format: date-time
+          description: Start time of the schedule
+        end_time:
+          type: string
+          format: date-time
+          description: End time of the schedule
+        available:
+          type: boolean
+          description: Whether the coach is available during this time
+        created_at:
+          type: string
+          format: date-time
+          description: When the schedule was created
+        updated_at:
+          type: string
+          format: date-time
+          description: When the schedule was last updated
+x-performance-metrics:
+  response-time:
+    p99: 500ms
+    p95: 300ms
+    p50: 100ms
+  throughput: 1000rpm
+  availability: 99.9%
+  error-rate: 0.1%
+security:
+  - BearerAuth: []
+  - ApiKeyAuth: []
+securitySchemes:
+  BearerAuth:
+    type: http
+    scheme: bearer
+    bearerFormat: JWT
+  ApiKeyAuth:
+    type: apiKey
+    in: header
+    name: X-API-KEY

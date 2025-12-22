@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """Tests for the concrete AA system agent."""
-from agentscope.aa import AgentCapabilities, AgentProfile, RoleRequirement, StaticScore
+from agentscope.aa import AgentCapabilities, AgentProfile, Requirement, StaticScore
 from agentscope.message import Msg
 from agentscope.ones import (
     AASystemAgent,
@@ -25,7 +25,6 @@ def _mock_agent(agent_id: str) -> AgentProfile:
     return AgentProfile(
         agent_id=agent_id,
         name=agent_id,
-        role="Dev",
         static_score=StaticScore(performance=0.9, brand=0.8, recognition=0.85),
         capabilities=AgentCapabilities(
             skills={"python", "rag"},
@@ -43,7 +42,7 @@ def _mock_agent(agent_id: str) -> AgentProfile:
 async def test_aa_agent_reply_generates_summary() -> None:
     registry = SystemRegistry()
     orchestrator = AssistantOrchestrator(system_registry=registry)
-    orchestrator.register_candidates("Dev", [_mock_agent("dev-aa")])
+    orchestrator.register_candidates([_mock_agent("dev-aa")])
 
     project_pool = ProjectPool()
     project_pool.register(ProjectDescriptor(project_id="proj-aa", name="AA Test"))
@@ -60,9 +59,9 @@ async def test_aa_agent_reply_generates_summary() -> None:
         kpi_tracker=kpi_tracker,
     )
 
-    def requirement_resolver(_: str) -> dict[str, RoleRequirement]:
+    def requirement_resolver(_: str) -> dict[str, Requirement]:
         return {
-            "task-1": RoleRequirement(role="Dev", skills={"python"}, tools={"docker"}),
+            "task-1": Requirement(skills={"python"}, tools={"docker"}),
         }
 
     def acceptance_resolver(_: str) -> AcceptanceCriteria:
@@ -101,7 +100,7 @@ async def test_aa_agent_reply_generates_summary() -> None:
 async def test_aa_agent_persists_conversation(tmp_path) -> None:
     registry = SystemRegistry()
     orchestrator = AssistantOrchestrator(system_registry=registry)
-    orchestrator.register_candidates("Dev", [_mock_agent("dev-aa")])
+    orchestrator.register_candidates([_mock_agent("dev-aa")])
 
     memory_store = AAMemoryStore(path=tmp_path / "aa.json")
     project_pool = ProjectPool()
@@ -122,7 +121,7 @@ async def test_aa_agent_persists_conversation(tmp_path) -> None:
         orchestrator=orchestrator,
         execution_loop=execution_loop,
         requirement_resolver=lambda _: {
-            "task-1": RoleRequirement(role="Dev", skills={"python"})
+            "task-1": Requirement(skills={"python"})
         },
         acceptance_resolver=lambda _: AcceptanceCriteria(description="q", metrics={"quality": 0.5}),
         metrics_resolver=lambda _: (100.0, 120.0, 50.0, 60.0),

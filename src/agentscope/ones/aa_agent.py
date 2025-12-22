@@ -2,17 +2,20 @@
 """Concrete AA agent that bridges user utterances and the One·s stack."""
 from __future__ import annotations
 
-from typing import Callable, Sequence
+from typing import Callable, Sequence, TYPE_CHECKING
 
 from ..agent import AgentBase
 from ..message import Msg, TextBlock
-from ..aa import RoleRequirement
+from ..aa import Requirement
 from .execution import ExecutionLoop
 from .intent import AcceptanceCriteria, AssistantOrchestrator, IntentRequest
 from ._system import UserProfile
 from .storage import AAMemoryStore
 
-RequirementResolver = Callable[[str], dict[str, RoleRequirement]]
+if TYPE_CHECKING:
+    from .sandbox_orchestrator import SandboxOrchestrator
+
+RequirementResolver = Callable[[str], dict[str, Requirement]]
 AcceptanceResolver = Callable[[str], AcceptanceCriteria]
 MetricsResolver = Callable[[str], tuple[float, float, float, float]]
 ProjectResolver = Callable[[str], str | None]
@@ -39,6 +42,7 @@ class AASystemAgent(AgentBase):
         user_profile: UserProfile | None = None,
         memory_store: AAMemoryStore | None = None,
         initial_prompt: str | None = None,
+        sandbox_orchestrator: "SandboxOrchestrator | None" = None,
     ) -> None:
         super().__init__()
         self.name = name
@@ -51,6 +55,7 @@ class AASystemAgent(AgentBase):
         self.project_resolver = project_resolver or (lambda _: None)
         self._history: list[Msg] = []
         self.memory_store = memory_store
+        self.sandbox_orchestrator = sandbox_orchestrator
         if self.memory_store is not None:
             record = self.memory_store.load(user_id)
             if initial_prompt:
@@ -91,14 +96,18 @@ class AASystemAgent(AgentBase):
             raise ValueError("AA agent expects textual content")
         return text
 
-    def _build_intent(self, utterance: str, role_requirements: dict[str, RoleRequirement]) -> IntentRequest:
+    def _build_intent(self, utterance: str, requirements: dict[str, Requirement]) -> IntentRequest:
         project_id = self.project_resolver(utterance)
-        return IntentRequest(
+        intent = IntentRequest(
             user_id=self.user_id,
             utterance=utterance,
             project_id=project_id,
-            role_requirements=role_requirements,
+            requirements=requirements,
         )
+        # AA sandbox decision: analyze requirement to determine sandbox types
+        if self.sandbox_orchestrator is not None:
+            intent.sandbox_decision = self.sandbox_orchestrator.analyze_requirement(intent)
+        return intent
 
     async def reply(self, msg: Msg | list[Msg] | None = None, **kwargs) -> Msg:
         if msg is not None:
@@ -108,9 +117,9 @@ class AASystemAgent(AgentBase):
             raise ValueError("AA agent requires at least one message to reply")
         utterance = self._extract_text(messages[-1])
 
-        role_requirements = self.requirement_resolver(utterance)
+        requirements = self.requirement_resolver(utterance)
         acceptance = self.acceptance_resolver(utterance)
-        intent = self._build_intent(utterance, role_requirements)
+        intent = self._build_intent(utterance, requirements)
         baseline_cost, observed_cost, baseline_time, observed_time = self.metrics_resolver(utterance)
 
         report = self.execution_loop.run_cycle(

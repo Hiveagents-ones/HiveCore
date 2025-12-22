@@ -1,0 +1,93 @@
+{
+  "common": {
+    "confirm": "确认",
+    "cancel": "取消",
+    "save": "保存",
+    "delete": "删除",
+    "edit": "编辑",
+    "add": "添加",
+    "search": "搜索",
+    "filter": "筛选",
+    "export": "导出",
+    "import": "导入",
+    "refresh": "刷新",
+    "loading": "加载中...",
+    "noData": "暂无数据",
+    "success": "操作成功",
+    "error": "操作失败",
+    "warning": "警告",
+    "info": "提示"
+  },
+  "menu": {
+    "dashboard": "仪表盘",
+    "analytics": "数据统计",
+    "courses": "课程管理",
+    "members": "会员管理",
+    "bookings": "预约管理",
+    "settings": "系统设置"
+  },
+  "analytics": {
+    "title": "数据统计",
+    "overview": "数据概览",
+    "bookingStats": "预约统计",
+    "memberGrowth": "会员增长",
+    "courseRanking": "课程排行",
+    "revenueStats": "收入统计",
+    "dateRange": "时间范围",
+    "today": "今天",
+    "yesterday": "昨天",
+    "thisWeek": "本周",
+    "thisMonth": "本月",
+    "lastMonth": "上月",
+    "thisYear": "今年",
+    "lastYear": "去年",
+    "customRange": "自定义",
+    "totalBookings": "总预约量",
+    "newMembers": "新增会员",
+    "totalRevenue": "总收入",
+    "averageRating": "平均评分",
+    "bookingTrend": "预约趋势",
+    "memberTrend": "会员增长趋势",
+    "revenueTrend": "收入趋势",
+    "topCourses": "热门课程",
+    "courseName": "课程名称",
+    "bookingCount": "预约次数",
+    "revenue": "收入",
+    "growthRate": "增长率",
+    "comparison": "对比",
+    "previousPeriod": "上期",
+    "currentPeriod": "本期",
+    "exportData": "导出数据",
+    "exportSuccess": "导出成功",
+    "exportFailed": "导出失败",
+    "selectDateRange": "请选择时间范围",
+    "startDate": "开始日期",
+    "endDate": "结束日期",
+    "apply": "应用",
+    "reset": "重置",
+    "chart": {
+      "line": "折线图",
+      "bar": "柱状图",
+      "pie": "饼图",
+      "area": "面积图"
+    },
+    "metrics": {
+      "daily": "日",
+      "weekly": "周",
+      "monthly": "月",
+      "yearly": "年"
+    },
+    "status": {
+      "completed": "已完成",
+      "pending": "待处理",
+      "cancelled": "已取消",
+      "noShow": "未到场"
+    }
+  },
+  "validation": {
+    "required": "此字段为必填项",
+    "invalidDate": "日期格式不正确",
+    "invalidRange": "时间范围无效",
+    "maxRange": "时间范围不能超过365天"
+  }
+}

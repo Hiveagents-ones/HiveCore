@@ -1,0 +1,26 @@
+{
+  "project_type": "web",
+  "files": [
+    "backend/app/core/payment_gateway.py",
+    "backend/app/models/payment.py",
+    "backend/app/crud/payment.py",
+    "backend/app/schemas/payment.py",
+    "backend/app/api/v1/endpoints/payments.py",
+    "frontend/src/api/payment.js",
+    "frontend/src/views/PaymentHistory.vue",
+    "frontend/src/stores/payment.js",
+    "frontend/src/views/Payment.vue",
+    "frontend/src/locales/zh.json",
+    "frontend/src/locales/en.json",
+    "tests/test_payment_api.py",
+    "tests/security/payment_security_test.py",
+    "tests/performance/payment_load_test.py",
+    "docs/payment.md"
+  ],
+  "setup_commands": [],
+  "setup_executed": false,
+  "run_command": "",
+  "entry_point": "",
+  "runtime_mode": true,
+  "sandbox_id": "runtime_sandbox_container_cnj86j24me1u82atid76xx9gc"
+}

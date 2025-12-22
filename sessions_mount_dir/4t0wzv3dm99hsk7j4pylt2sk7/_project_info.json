@@ -1,0 +1,21 @@
+{
+  "project_type": "fullstack",
+  "files": [
+    "backend/app/main.py",
+    "backend/app/database.py",
+    "backend/app/models.py",
+    "backend/app/routers/members.py",
+    "backend/app/schemas.py",
+    "backend/app/core/security.py",
+    "backend/app/routers/auth.py",
+    "frontend/src/main.js",
+    "frontend/src/router/index.js",
+    "frontend/src/stores/member.js"
+  ],
+  "setup_commands": [],
+  "setup_executed": false,
+  "run_command": "",
+  "entry_point": "",
+  "runtime_mode": true,
+  "sandbox_id": "runtime_sandbox_container_4t0wzv3dm99hsk7j4pylt2sk7"
+}

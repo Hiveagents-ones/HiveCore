@@ -1,0 +1,18 @@
+{
+  "project_type": "fullstack",
+  "files": [
+    "backend/app/models.py",
+    "backend/app/schemas.py",
+    "backend/app/routers/checkin.py",
+    "frontend/src/views/Checkin.vue",
+    "frontend/src/api/checkin.js",
+    "frontend/src/router/index.js",
+    "frontend/src/i18n/index.js"
+  ],
+  "setup_commands": [],
+  "setup_executed": false,
+  "run_command": "",
+  "entry_point": "",
+  "runtime_mode": true,
+  "sandbox_id": "runtime_sandbox_container_1kbkk93qnw1ou2ny3pdjgppi3"
+}

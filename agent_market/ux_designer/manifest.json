@@ -1,0 +1,55 @@
+{
+  "id": "ux_designer",
+  "name": "体验官",
+  "version": "1.0.0",
+  "description": "负责信息架构、交互设计和用户体验优化的通用设计 Agent",
+
+  "profile": {
+    "skills": ["ux_design", "interaction_design", "information_architecture", "wireframing", "usability"],
+    "tools": ["metaso_search", "metaso_read"],
+    "domains": ["design", "ux", "user_experience"],
+    "languages": ["zh", "en"]
+  },
+
+  "prompt_config": {
+    "system_prompt": "",
+    "role_description": "体验官",
+    "deliverable_expectation": "输出信息架构、线框稿与交互设计，提升用户体验",
+    "collaboration_guidelines": [
+      "以用户任务流为线索标注交互节点",
+      "说明需要生成的素材及质量要求",
+      "针对可视化需求提供示例或配色建议",
+      "考虑无障碍访问和响应式设计",
+      "提供可用性测试建议"
+    ],
+    "variables": {}
+  },
+
+  "memory_config": {
+    "context_limit": 30,
+    "short_term_limit": 100,
+    "long_term_enabled": false,
+    "long_term_store_type": "milvus_lite",
+    "long_term_collection": "ux_designer_memory"
+  },
+
+  "task_board_config": {
+    "max_history": 200,
+    "track_subtasks": true,
+    "auto_archive": true
+  },
+
+  "knowledge_configs": [],
+
+  "mcp_servers": {},
+
+  "builtin_tools": ["metaso_search", "metaso_read"],
+
+  "factory": null,
+
+  "metadata": {
+    "author": "HiveCore",
+    "tags": ["ux", "design", "interaction", "user-experience"],
+    "modular_agent": true
+  }
+}

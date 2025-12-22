@@ -1,0 +1,92 @@
+groups:
+- name: payment.rules
+  rules:
+  - alert: PaymentSuccessRateLow
+    expr: (rate(payment_success_total[5m]) / (rate(payment_success_total[5m]) + rate(payment_failure_total[5m]))) * 100 < 95
+    for: 2m
+    labels:
+      severity: warning
+    annotations:
+      summary: "支付成功率低于95%"
+      description: "最近5分钟支付成功率为 {{ $value }}%，低于95%阈值"
+
+  - alert: PaymentFailureRateHigh
+    expr: (rate(payment_failure_total[5m]) / (rate(payment_success_total[5m]) + rate(payment_failure_total[5m]))) * 100 > 5
+    for: 2m
+    labels:
+      severity: critical
+    annotations:
+      summary: "支付失败率过高"
+      description: "最近5分钟支付失败率为 {{ $value }}%，超过5%阈值"
+
+  - alert: SubscriptionExpiringSoon
+    expr: subscription_expiring_soon_total > 0
+    for: 0m
+    labels:
+      severity: info
+    annotations:
+      summary: "有会员即将到期"
+      description: "当前有 {{ $value }} 个会员订阅将在7天内到期"
+
+  - alert: PaymentGatewayDown
+    expr: up{job="payment-gateway"} == 0
+    for: 1m
+    labels:
+      severity: critical
+    annotations:
+      summary: "支付网关不可用"
+      description: "支付网关 {{ $labels.instance }} 已下线超过1分钟"
+
+  - alert: HighPaymentLatency
+    expr: histogram_quantile(0.95, rate(payment_duration_seconds_bucket[5m])) > 3
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "支付延迟过高"
+      description: "95%的支付请求耗时超过3秒，当前P95延迟为 {{ $value }}秒"
+
+  - alert: DatabaseConnectionHigh
+    expr: pg_stat_activity_count > 80
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "数据库连接数过高"
+      description: "PostgreSQL活跃连接数为 {{ $value }}，超过80"
+
+  - alert: RedisMemoryHigh
+    expr: redis_memory_used_bytes / redis_memory_max_bytes * 100 > 90
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Redis内存使用率过高"
+      description: "Redis内存使用率为 {{ $value }}%，超过90%"
+
+  - alert: CeleryTaskBacklog
+    expr: celery_queue_length > 100
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Celery任务积压"
+      description: "队列 {{ $labels.queue }} 中有 {{ $value }} 个待处理任务"
+
+  - alert: SubscriptionRenewalFailure
+    expr: rate(subscription_renewal_failure_total[1h]) > 0.1
+    for: 10m
+    labels:
+      severity: critical
+    annotations:
+      summary: "订阅续费失败率高"
+      description: "最近1小时订阅续费失败率为 {{ $value }}次/小时"
+
+  - alert: PaymentAmountAnomaly
+    expr: abs(rate(payment_amount_sum[5m]) - rate(payment_amount_sum[1h] offset 55m)) / rate(payment_amount_sum[1h] offset 55m) > 0.5
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "支付金额异常波动"
+      description: "最近5分钟支付金额相比1小时前波动超过50%"

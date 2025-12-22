@@ -59,7 +59,8 @@ def finish_function_pre_print_hook(
                     )
                     return kwargs
                 except Exception:
-                    print("Error in block input", block["input"])
+                    from ..scripts._observability import get_logger
+                    get_logger().error(f"Error in block input: {block['input']}")
 
     return None
 

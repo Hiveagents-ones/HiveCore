@@ -1,0 +1,55 @@
+{
+  "common": {
+    "confirm": "确认",
+    "cancel": "取消",
+    "save": "保存",
+    "delete": "删除",
+    "edit": "编辑",
+    "add": "新增",
+    "search": "搜索",
+    "reset": "重置",
+    "submit": "提交",
+    "back": "返回",
+    "loading": "加载中...",
+    "noData": "暂无数据",
+    "operation": "操作",
+    "status": "状态",
+    "createTime": "创建时间",
+    "updateTime": "更新时间"
+  },
+  "menu": {
+    "memberManagement": "会员信息管理",
+    "memberList": "会员列表",
+    "memberForm": "会员表单"
+  },
+  "member": {
+    "title": "会员信息管理",
+    "list": "会员列表",
+    "addMember": "新增会员",
+    "editMember": "编辑会员",
+    "deleteMember": "删除会员",
+    "memberInfo": "会员信息",
+    "name": "姓名",
+    "contact": "联系方式",
+    "level": "会员等级",
+    "joinDate": "入会日期",
+    "expiryDate": "到期日期",
+    "healthStatus": "健康状况",
+    "searchPlaceholder": "请输入会员姓名或联系方式",
+    "confirmDelete": "确认删除该会员信息吗？",
+    "deleteSuccess": "删除成功",
+    "saveSuccess": "保存成功",
+    "nameRequired": "请输入姓名",
+    "contactRequired": "请输入联系方式",
+    "levelRequired": "请选择会员等级",
+    "joinDateRequired": "请选择入会日期",
+    "expiryDateRequired": "请选择到期日期",
+    "healthStatusRequired": "请输入健康状况"
+  },
+  "message": {
+    "success": "操作成功",
+    "error": "操作失败",
+    "networkError": "网络错误，请稍后重试",
+    "required": "此字段为必填项"
+  }
+}

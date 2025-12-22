@@ -1,0 +1,116 @@
+{
+  "register": {
+    "title": "Member Registration",
+    "form": {
+      "name": {
+        "label": "Full Name",
+        "placeholder": "Enter your full name",
+        "required": "Full name is required",
+        "invalid": "Please enter a valid name"
+      },
+      "phone": {
+        "label": "Phone Number",
+        "placeholder": "Enter your phone number",
+        "required": "Phone number is required",
+        "invalid": "Please enter a valid phone number"
+      },
+      "idCard": {
+        "label": "ID Card Number",
+        "placeholder": "Enter your ID card number",
+        "required": "ID card number is required",
+        "invalid": "Please enter a valid ID card number"
+      },
+      "email": {
+        "label": "Email Address",
+        "placeholder": "Enter your email address",
+        "required": "Email address is required",
+        "invalid": "Please enter a valid email address"
+      },
+      "password": {
+        "label": "Password",
+        "placeholder": "Enter your password",
+        "required": "Password is required",
+        "invalid": "Password must be at least 8 characters"
+      },
+      "confirmPassword": {
+        "label": "Confirm Password",
+        "placeholder": "Confirm your password",
+        "required": "Please confirm your password",
+        "mismatch": "Passwords do not match"
+      },
+      "gender": {
+        "label": "Gender",
+        "required": "Please select your gender",
+        "male": "Male",
+        "female": "Female",
+        "other": "Other"
+      },
+      "birthDate": {
+        "label": "Date of Birth",
+        "placeholder": "Select your date of birth",
+        "required": "Date of birth is required",
+        "invalid": "Please enter a valid date"
+      },
+      "address": {
+        "label": "Address",
+        "placeholder": "Enter your address",
+        "required": "Address is required"
+      },
+      "emergencyContact": {
+        "label": "Emergency Contact",
+        "name": {
+          "label": "Contact Name",
+          "placeholder": "Enter emergency contact name",
+          "required": "Emergency contact name is required"
+        },
+        "phone": {
+          "label": "Contact Phone",
+          "placeholder": "Enter emergency contact phone",
+          "required": "Emergency contact phone is required",
+          "invalid": "Please enter a valid phone number"
+        },
+        "relationship": {
+          "label": "Relationship",
+          "placeholder": "Enter relationship",
+          "required": "Relationship is required"
+        }
+      },
+      "membershipType": {
+        "label": "Membership Type",
+        "required": "Please select a membership type",
+        "basic": "Basic",
+        "premium": "Premium",
+        "vip": "VIP"
+      },
+      "terms": {
+        "label": "I agree to the Terms and Conditions",
+        "required": "You must agree to the terms and conditions"
+      }
+    },
+    "submit": "Register",
+    "submitting": "Registering...",
+    "success": "Registration successful! Your member account has been created.",
+    "error": "Registration failed. Please try again.",
+    "alreadyRegistered": "Already have an account?",
+    "login": "Sign In",
+    "back": "Back"
+  },
+  "common": {
+    "required": "Required",
+    "optional": "Optional",
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "save": "Save",
+    "edit": "Edit",
+    "delete": "Delete",
+    "loading": "Loading...",
+    "error": "Error",
+    "success": "Success",
+    "warning": "Warning",
+    "info": "Information",
+    "yes": "Yes",
+    "no": "No",
+    "ok": "OK",
+    "close": "Close"
+  }
+}

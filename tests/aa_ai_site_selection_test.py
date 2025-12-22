@@ -4,7 +4,7 @@ from agentscope.aa import (
     AgentCapabilities,
     AgentProfile,
     StaticScore,
-    RoleRequirement,
+    Requirement,
     AAScoringConfig,
 )
 from agentscope.ones import AssistantOrchestrator, AcceptanceCriteria, IntentRequest
@@ -13,7 +13,6 @@ from agentscope.ones._system import SystemRegistry
 
 def _candidate(
     agent_id: str,
-    role: str,
     performance: float,
     recognition: float,
     *,
@@ -24,7 +23,6 @@ def _candidate(
     return AgentProfile(
         agent_id=agent_id,
         name=agent_id,
-        role=role,
         static_score=StaticScore(performance=performance, brand=0.8, recognition=recognition),
         capabilities=AgentCapabilities(
             skills=skills,
@@ -43,93 +41,70 @@ def test_ai_site_role_selection_prefers_best_fit() -> None:
         scoring_config=AAScoringConfig(requirement_weight=0.5),
     )
 
-    orchestrator.register_candidates(
-        "Product",
-        [
-            _candidate(
-                "prod-vision",
-                "Product",
-                0.9,
-                0.92,
-                skills={"ai_builder", "sla", "ux"},
-                tools={"figjam", "notion"},
-                domains={"website"},
-            ),
-            _candidate(
-                "prod-generic",
-                "Product",
-                0.95,
-                0.85,
-                skills={"roadmap"},
-                tools={"excel"},
-                domains={"generic"},
-            ),
-        ],
-    )
-
-    orchestrator.register_candidates(
-        "Frontend",
-        [
-            _candidate(
-                "fe-pro",
-                "Frontend",
-                0.9,
-                0.9,
-                skills={"react", "tailwind", "ai_widget"},
-                tools={"storybook", "docker"},
-                domains={"website"},
-            ),
-            _candidate(
-                "fe-basic",
-                "Frontend",
-                0.92,
-                0.88,
-                skills={"vue"},
-                tools={"webpack"},
-                domains={"landing"},
-            ),
-        ],
-    )
-
-    orchestrator.register_candidates(
-        "Backend",
-        [
-            _candidate(
-                "be-ai",
-                "Backend",
-                0.88,
-                0.87,
-                skills={"fastapi", "rag", "cache"},
-                tools={"redis", "pg"},
-                domains={"website"},
-            ),
-            _candidate(
-                "be-basic",
-                "Backend",
-                0.93,
-                0.82,
-                skills={"django"},
-                tools={"mysql"},
-                domains={"generic"},
-            ),
-        ],
-    )
+    # Register agents with distinctive skills for capabilities-based matching
+    orchestrator.register_candidates([
+        _candidate(
+            "prod-vision",
+            0.9,
+            0.92,
+            skills={"ai_builder", "sla", "product_design"},
+            tools={"figjam", "notion"},
+            domains={"website"},
+        ),
+        _candidate(
+            "prod-generic",
+            0.85,
+            0.85,
+            skills={"roadmap"},
+            tools={"excel"},
+            domains={"generic"},
+        ),
+        _candidate(
+            "fe-pro",
+            0.9,
+            0.9,
+            skills={"react", "tailwind", "ai_widget"},
+            tools={"storybook", "docker"},
+            domains={"website"},
+        ),
+        _candidate(
+            "fe-basic",
+            0.82,
+            0.88,
+            skills={"vue"},
+            tools={"webpack"},
+            domains={"landing"},
+        ),
+        _candidate(
+            "be-ai",
+            0.9,
+            0.9,
+            skills={"fastapi", "rag", "cache"},
+            tools={"redis", "pg"},
+            domains={"website"},
+        ),
+        _candidate(
+            "be-basic",
+            0.83,
+            0.82,
+            skills={"django"},
+            tools={"mysql"},
+            domains={"generic"},
+        ),
+    ])
 
     requirements = {
-        "product": RoleRequirement(
-            role="Product",
+        "product": Requirement(
             skills={"ai_builder", "sla"},
             tools={"figjam"},
             domains={"website"},
         ),
-        "frontend": RoleRequirement(
-            role="Frontend",
+        "frontend": Requirement(
             skills={"react", "ai_widget"},
             tools={"storybook"},
             domains={"website"},
         ),
-        "backend": RoleRequirement(
-            role="Backend",
+        "backend": Requirement(
             skills={"fastapi", "rag"},
             tools={"redis"},
             domains={"website"},
@@ -140,7 +115,7 @@ def test_ai_site_role_selection_prefers_best_fit() -> None:
         user_id="client-1",
         utterance="我要一个AI建站官网",
         project_id="ai-site",
-        role_requirements=requirements,
+        requirements=requirements,
     )
     acceptance = AcceptanceCriteria(description="AI site MVP", metrics={"quality": 0.8})
 

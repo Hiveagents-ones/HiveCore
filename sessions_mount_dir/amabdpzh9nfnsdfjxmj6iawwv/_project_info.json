@@ -1,0 +1,21 @@
+{
+  "project_type": "web",
+  "files": [
+    "backend/app/core/database.py",
+    "backend/app/core/config.py",
+    "backend/app/core/security.py",
+    "backend/app/core/deps.py",
+    "backend/app/routers/course.py",
+    "backend/app/main.py",
+    "frontend/src/stores/auth.js",
+    "frontend/src/services/api.js",
+    "frontend/src/main.js",
+    "frontend/src/views/CourseListView.vue"
+  ],
+  "setup_commands": [],
+  "setup_executed": false,
+  "run_command": "",
+  "entry_point": "",
+  "runtime_mode": true,
+  "sandbox_id": "runtime_sandbox_container_9b0p86590yk94mctumobw4u5p"
+}

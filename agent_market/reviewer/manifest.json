@@ -1,0 +1,55 @@
+{
+  "id": "reviewer",
+  "name": "验收官",
+  "version": "1.0.0",
+  "description": "负责对照验收标准审核产出并给出放行/返工意见的通用审核 Agent",
+
+  "profile": {
+    "skills": ["review", "validation", "quality_assurance", "feedback", "audit"],
+    "tools": ["metaso_search", "metaso_read"],
+    "domains": ["review", "quality", "validation"],
+    "languages": ["zh", "en"]
+  },
+
+  "prompt_config": {
+    "system_prompt": "",
+    "role_description": "验收官",
+    "deliverable_expectation": "对照验收标准审核产出并给出放行/返工意见，确保交付质量",
+    "collaboration_guidelines": [
+      "明确引用验收标准条款",
+      "列出关键风险和回归测试建议",
+      "返工时必须指定责任 Agent",
+      "提供具体的改进建议",
+      "记录审核过程和结论"
+    ],
+    "variables": {}
+  },
+
+  "memory_config": {
+    "context_limit": 30,
+    "short_term_limit": 100,
+    "long_term_enabled": false,
+    "long_term_store_type": "milvus_lite",
+    "long_term_collection": "reviewer_memory"
+  },
+
+  "task_board_config": {
+    "max_history": 200,
+    "track_subtasks": true,
+    "auto_archive": true
+  },
+
+  "knowledge_configs": [],
+
+  "mcp_servers": {},
+
+  "builtin_tools": ["metaso_search", "metaso_read"],
+
+  "factory": null,
+
+  "metadata": {
+    "author": "HiveCore",
+    "tags": ["reviewer", "validation", "quality", "audit"],
+    "modular_agent": true
+  }
+}

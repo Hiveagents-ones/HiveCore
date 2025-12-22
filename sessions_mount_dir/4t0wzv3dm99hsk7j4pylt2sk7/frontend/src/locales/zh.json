@@ -1,0 +1,27 @@
+{
+  "common": {
+    "loading": "加载中",
+    "save": "保存",
+    "saving": "保存中...",
+    "cancel": "取消",
+    "edit": "编辑",
+    "delete": "删除"
+  },
+  "course": {
+    "schedule": "课程表",
+    "management": "课程管理",
+    "coach": "教练",
+    "time": "时间",
+    "location": "地点",
+    "capacity": "容量",
+    "name": "课程名称",
+    "description": "描述",
+    "enroll": "报名",
+    "full": "已满",
+    "createCourse": "创建课程",
+    "editCourse": "编辑课程",
+    "searchPlaceholder": "搜索课程...",
+    "allCourses": "所有课程",
+    "noCourses": "暂无课程"
+  }
+}

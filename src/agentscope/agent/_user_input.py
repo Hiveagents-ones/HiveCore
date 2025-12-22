@@ -103,7 +103,8 @@ class TerminalUserInput(UserInputBase):
 
             json_schema = structured_model.model_json_schema()
             required = json_schema.get("required", [])
-            print("Structured input (press Enter to skip for optional):)")
+            from ..scripts._observability import get_logger
+            get_logger().info("Structured input (press Enter to skip for optional):)")
 
             for key, item in json_schema.get("properties").items():
                 requirements = {**item}
@@ -114,7 +115,8 @@ class TerminalUserInput(UserInputBase):
 
                     if res == "":
                         if key in required:
-                            print(f"Key {key} is required.")
+                            from ..scripts._observability import get_logger
+                            get_logger().warn(f"Key {key} is required.")
                             continue
 
                         res = item.get("default", None)
@@ -123,11 +125,9 @@ class TerminalUserInput(UserInputBase):
                         try:
                             res = json5.loads(res)
                         except json.decoder.JSONDecodeError as e:
-                            print(
-                                "\033[31mInvalid input with error:\n"
-                                "```\n"
-                                f"{e}\n"
-                                "```\033[0m",
+                            from ..scripts._observability import get_logger
+                            get_logger().error(
+                                f"Invalid input with error:\n```\n{e}\n```",
                             )
                             continue
 
@@ -136,8 +136,9 @@ class TerminalUserInput(UserInputBase):
                         structured_input[key] = res
                         break
                     except jsonschema.ValidationError as e:
-                        print(
-                            f"\033[31mValidation error:\n```\n{e}\n```\033[0m",
+                        from ..scripts._observability import get_logger
+                        get_logger().error(
+                            f"Validation error:\n```\n{e}\n```",
                         )
                         time.sleep(0.5)
 

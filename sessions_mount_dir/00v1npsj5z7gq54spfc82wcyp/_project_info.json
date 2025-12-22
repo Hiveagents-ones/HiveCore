@@ -1,0 +1,18 @@
+{
+  "project_type": "api",
+  "files": [
+    "backend/app/main.py",
+    "backend/app/database.py",
+    "backend/app/routers/members.py",
+    "backend/app/schemas/member.py",
+    "backend/app/services/audit.py",
+    "frontend/src/api/member.js",
+    "frontend/src/views/MemberListView.vue"
+  ],
+  "setup_commands": [],
+  "setup_executed": false,
+  "run_command": "",
+  "entry_point": "",
+  "runtime_mode": true,
+  "sandbox_id": "runtime_sandbox_container_00v1npsj5z7gq54spfc82wcyp"
+}

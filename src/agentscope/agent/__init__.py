@@ -10,6 +10,13 @@ from ._user_input import (
     StudioUserInput,
 )
 from ._user_agent import UserAgent
+from .metaso_agent import (
+    MetasoSearchAgent,
+    MetasoKnowledgeAgent,
+    create_metaso_agent,
+    spawn_metaso_agent,
+    spawn_metaso_kb_agent,
+)
 
 
 __all__ = [
@@ -21,4 +28,9 @@ __all__ = [
     "TerminalUserInput",
     "StudioUserInput",
     "UserAgent",
+    "MetasoSearchAgent",
+    "MetasoKnowledgeAgent",
+    "create_metaso_agent",
+    "spawn_metaso_agent",
+    "spawn_metaso_kb_agent",
 ]

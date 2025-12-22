@@ -1,0 +1,158 @@
+{
+  "common": {
+    "confirm": "确认",
+    "cancel": "取消",
+    "save": "保存",
+    "delete": "删除",
+    "edit": "编辑",
+    "add": "添加",
+    "search": "搜索",
+    "reset": "重置",
+    "submit": "提交",
+    "back": "返回",
+    "loading": "加载中...",
+    "noData": "暂无数据",
+    "operation": "操作",
+    "status": "状态",
+    "createTime": "创建时间",
+    "updateTime": "更新时间"
+  },
+  "member": {
+    "title": "会员管理",
+    "list": "会员列表",
+    "create": "创建会员",
+    "edit": "编辑会员",
+    "name": "姓名",
+    "phone": "手机号",
+    "email": "邮箱",
+    "level": "会员等级",
+    "remainingMembership": "剩余会籍",
+    "membershipType": "会籍类型",
+    "joinDate": "加入日期",
+    "expiryDate": "到期日期",
+    "status": {
+      "active": "活跃",
+      "inactive": "非活跃",
+      "expired": "已过期"
+    },
+    "level": {
+      "bronze": "青铜",
+      "silver": "白银",
+      "gold": "黄金",
+      "platinum": "铂金",
+      "diamond": "钻石"
+    },
+    "plan": {
+      "title": "会员方案",
+      "list": "方案列表",
+      "create": "创建方案",
+      "edit": "编辑方案",
+      "name": "方案名称",
+      "price": "价格",
+      "duration": "有效期",
+      "benefits": "权益说明",
+      "status": {
+        "active": "启用",
+        "inactive": "禁用"
+      }
+    },
+    "form": {
+      "nameRequired": "请输入姓名",
+      "phoneRequired": "请输入手机号",
+      "phoneInvalid": "手机号格式不正确",
+      "emailRequired": "请输入邮箱",
+      "emailInvalid": "邮箱格式不正确",
+      "levelRequired": "请选择会员等级",
+      "membershipTypeRequired": "请选择会籍类型",
+      "joinDateRequired": "请选择加入日期",
+      "expiryDateRequired": "请选择到期日期"
+    },
+    "message": {
+      "createSuccess": "会员创建成功",
+      "updateSuccess": "会员更新成功",
+      "deleteSuccess": "会员删除成功",
+      "deleteConfirm": "确定要删除该会员吗？",
+      "planCreateSuccess": "方案创建成功",
+      "planUpdateSuccess": "方案更新成功",
+      "planDeleteSuccess": "方案删除成功",
+      "planDeleteConfirm": "确定要删除该方案吗？"
+    }
+  },
+  "menu": {
+    "payment": "支付管理",
+    "paymentHistory": "支付历史",
+    "renewal": "续费管理",
+    "dashboard": "仪表盘",
+    "member": "会员管理",
+    "memberList": "会员列表",
+    "memberPlans": "会员方案",
+    "settings": "系统设置"
+  }
+}
+,
+  "payment": {
+    "title": "支付管理",
+    "history": "支付历史",
+    "renewal": "续费管理",
+    "amount": "支付金额",
+    "method": "支付方式",
+    "status": "支付状态",
+    "transactionId": "交易号",
+    "paymentTime": "支付时间",
+    "description": "支付描述",
+    "memberName": "会员姓名",
+    "planName": "方案名称",
+    "status": {
+      "pending": "待支付",
+      "success": "支付成功",
+      "failed": "支付失败",
+      "cancelled": "已取消",
+      "refunded": "已退款"
+    },
+    "method": {
+      "alipay": "支付宝",
+      "wechat": "微信支付",
+      "creditCard": "信用卡",
+      "bankTransfer": "银行转账"
+    },
+    "form": {
+      "amountRequired": "请输入支付金额",
+      "methodRequired": "请选择支付方式",
+      "descriptionRequired": "请输入支付描述"
+    },
+    "message": {
+      "paymentSuccess": "支付成功",
+      "paymentFailed": "支付失败",
+      "paymentCancelled": "支付已取消",
+      "refundSuccess": "退款成功",
+      "refundFailed": "退款失败",
+      "confirmPayment": "确认支付？",
+      "confirmRefund": "确认退款？"
+    },
+    "button": {
+      "pay": "立即支付",
+      "refund": "申请退款",
+      "viewDetails": "查看详情",
+      "retry": "重试支付"
+    }
+  },
+  "renewal": {
+    "title": "续费管理",
+    "currentPlan": "当前方案",
+    "expiryDate": "到期日期",
+    "availablePlans": "可选方案",
+    "upgrade": "升级方案",
+    "downgrade": "降级方案",
+    "renew": "续费当前方案",
+    "changePlan": "更换方案",
+    "proration": "差价计算",
+    "effectiveDate": "生效日期",
+    "message": {
+      "renewSuccess": "续费成功",
+      "upgradeSuccess": "升级成功",
+      "downgradeSuccess": "降级成功",
+      "confirmRenew": "确认续费当前方案？",
+      "confirmUpgrade": "确认升级到此方案？",
+      "confirmDowngrade": "确认降级到此方案？"
+    }
+  }

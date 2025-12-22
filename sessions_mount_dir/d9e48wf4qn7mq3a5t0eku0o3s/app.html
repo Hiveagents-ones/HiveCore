@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>Hello World - Interactive Web App</title>
+    <meta name="description" content="An interactive Hello World web application with theme switching and multi-language support.">
+    
+    <!-- Security Headers -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self';">
+    <meta http-equiv="X-Content-Type-Options" content="nosniff">
+    <meta http-equiv="X-Frame-Options" content="DENY">
+    <meta http-equiv="X-XSS-Protection" content="1; mode=block">
+    <meta name="referrer" content="strict-origin-when-cross-origin">
+    
+    <style>
+        /* CSS Variables for theming */
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #333333;
+            --primary-color: #0066cc;
+            --hover-color: #004499;
+            --border-color: #cccccc;
+            --shadow-color: rgba(0, 0, 0, 0.1);
+        }
+        
+        [data-theme="dark"] {
+            --bg-color: #1a1a1a;
+            --text-color: #e0e0e0;
+            --primary-color: #4da6ff;
+            --hover-color: #66b3ff;
+            --border-color: #444444;
+            --shadow-color: rgba(255, 255, 255, 0.1);
+        }
+        
+        /* Base styles */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            line-height: 1.6;
+            transition: background-color 0.3s ease, color 0.3s ease;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        /* Header with controls */
+        header {
+            padding: 1rem;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .controls {
+            display: flex;
+            gap: 1rem;
+        }
+        
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        select, button {
+            padding: 0.5rem;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        button:hover, select:hover {
+            border-color: var(--primary-color);
+        }
+        
+        button:focus, select:focus {
+            outline: 2px solid var(--primary-color);
+            outline-offset: 2px;
+        }
+        
+        /* Main content */
+        main {
+            flex: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 2rem;
+        }
+        
+        #hello-text {
+            font-size: 3rem;
+            font-weight: 400;
+            text-align: center;
+            padding: 2.5rem;
+            border-radius: 12px;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            position: relative;
+            background: linear-gradient(135deg, var(--primary-color), var(--hover-color));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        #hello-text:hover {
+            transform: translateY(-4px) scale(1.05);
+            box-shadow: 0 8px 16px var(--shadow-color);
+            filter: brightness(1.1);
+        }
+        
+        #hello-text:active {
+            transform: translateY(0);
+            box-shadow: 0 2px 4px var(--shadow-color);
+        }
+        
+        #hello-text:focus {
+            outline: 2px solid var(--primary-color);
+            outline-offset: 4px;
+        }
+        
+        /* Cookie banner */
+        .cookie-banner {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background-color: var(--bg-color);
+            border-top: 1px solid var(--border-color);
+            padding: 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transform: translateY(100%);
+            transition: transform 0.3s ease;
+            z-index: 1000;
+        }
+        
+        .cookie-banner.show {
+            transform: translateY(0);
+        }
+        
+        .cookie-buttons {
+            display: flex;
+            gap: 0.5rem;
+        }
+        
+        /* Footer */
+        footer {
+            padding: 1rem;
+            text-align: center;
+            border-top: 1px solid var(--border-color);
+            font-size: 0.875rem;
+        }
+        
+        footer a {
+            color: var(--primary-color);
+            text-decoration: none;
+        }
+        
+        footer a:hover {
+            text-decoration: underline;
+        }
+        
+        /* RTL support */
+        [dir="rtl"] #hello-text {
+            text-align: right;
+        }
+        
+        /* Accessibility */
+        .sr-only {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border-width: 0;
+        }
+        
+        /* Pulse animation */
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+            100% { transform: scale(1); }
+        }
+
+
+        /* IE11 fallbacks */
+
+        /* Focus visible styles */
+        #hello-text:focus-visible {
+            outline: 2px solid var(--primary-color);
+            outline-offset: 4px;
+        }
+
+        /* Reduced motion support */
+        @media (prefers-reduced-motion: reduce) {
+            *,
+            *::before,
+            *::after {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+            }
+        }
+        @media all and (-ms-high-contrast: none), (-ms-high-contrast: active) {
+            #hello-text {
+                font-size: 2rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="controls">
+            <div class="control-group">
+                <label for="language-select">Language:</label>
+                <select id="language-select" aria-label="Select language">
+                    <option value="en">English</option>
+                    <option value="zh">中文</option>
+                    <option value="ar">العربية</option>
+                </select>
+            </div>
+            <div class="control-group">
+                <label for="theme-toggle">Theme:</label>
+                <button id="theme-toggle" aria-label="Toggle theme">🌙</button>
+            </div>
+        </div>
+    </header>
+    
+    <main>
+        <p id="hello-text" tabindex="0" role="text" aria-label="Hello World greeting" lang="en">Hello World</p>
+    </main>
+    
+    <div class="cookie-banner" id="cookie-banner" role="dialog" aria-labelledby="cookie-title" aria-describedby="cookie-description">
+        <div>
+            <p id="cookie-title">We use cookies</p>
+            <p id="cookie-description">This website uses cookies to ensure you get the best experience on our website.</p>
+        </div>
+        <div class="cookie-buttons">
+            <button id="accept-cookies">Accept</button>
+            <button id="reject-cookies">Reject</button>
+        </div>
+    </div>
+    
+    <footer>
+        <p>&copy; 2023 Hello World App. <a href="#privacy-policy">Privacy Policy</a> | <a href="#terms-of-service">Terms of Service</a></p>
+    </footer>
+    
+<noscript>
+        <div style="background: #ff6b6b; color: white; padding: 1rem; text-align: center;">
+            JavaScript is required for this application to function properly. Please enable JavaScript in your browser settings.
+        </div>
+    </noscript>
+    <script>
+        // Internationalization (i18n) data
+        const i18n = {
+            en: {
+                hello: '✨ Hello World ✨',
+                language: 'Language',
+                theme: 'Theme',
+                accept: 'Accept',
+                reject: 'Reject',
+                cookieTitle: 'We use cookies',
+                cookieDescription: 'This website uses cookies to ensure you get the best experience on our website.',
+                privacy: 'Privacy Policy',
+                terms: 'Terms of Service',
+                footer: '&copy; 2023 Hello World App.'
+            },
+            zh: {
+                hello: '✨ 你好世界 ✨',
+                language: '语言',
+                theme: '主题',
+                accept: '接受',
+                reject: '拒绝',
+                cookieTitle: '我们使用Cookie',
+                cookieDescription: '本网站使用Cookie以确保您在我们网站上获得最佳体验。',
+                privacy: '隐私政策',
+                terms: '服务条款',
+                footer: '&copy; 2023 你好世界应用。'
+            },
+            ar: {
+                hello: '✨ مرحبا بالعالم ✨',
+                language: 'اللغة',
+                theme: 'الموضوع',
+                accept: 'قبول',
+                reject: 'رفض',
+                cookieTitle: 'نستخدم ملفات تعريف الارتباط',
+                cookieDescription: 'يستخدم هذا الموقع ملفات تعريف الارتباط للتأكيد من حصولك على أفضل تجربة على موقعنا.',
+                privacy: 'سياسة الخصوصية',
+                terms: 'شروط الخدمة',
+                footer: '&copy; 2023 تطبيق مرحبا بالعالم.'
+            }
+        };
+        
+        // Observability SDK (mock)
+        const ObservabilitySDK = {
+            trackEvent: function(eventName, properties) {
+                console.log('Event tracked:', eventName, properties);
+                // In a real implementation, this would send data to a monitoring service
+            },
+            
+            trackError: function(error, context) {
+                console.error('Error tracked:', error, context);
+                // In a real implementation, this would send error details to a monitoring service
+            },
+            
+            trackPerformance: function(metricName, value) {
+                console.log('Performance tracked:', metricName, value);
+                // In a real implementation, this would send performance metrics to a monitoring service
+            }
+        };
+        
+        // Application state
+        const app = {
+            currentLanguage: 'en',
+            currentTheme: 'light',
+            cookiesAccepted: null
+        };
+        
+        // DOM elements
+        const helloText = document.getElementById('hello-text');
+        const languageSelect = document.getElementById('language-select');
+        const themeToggle = document.getElementById('theme-toggle');
+        const cookieBanner = document.getElementById('cookie-banner');
+        const acceptCookiesBtn = document.getElementById('accept-cookies');
+        const rejectCookiesBtn = document.getElementById('reject-cookies');
+        
+        // Initialize application
+        function init() {
+            // Check for saved preferences
+            const savedLanguage = localStorage.getItem('language');
+            const savedTheme = localStorage.getItem('theme');
+            const cookiesConsent = localStorage.getItem('cookiesConsent');
+            
+            if (savedLanguage) {
+                app.currentLanguage = savedLanguage;
+                languageSelect.value = savedLanguage;
+            }
+            
+            if (savedTheme) {
+                app.currentTheme = savedTheme;
+                applyTheme(savedTheme);
+            }
+            
+            if (cookiesConsent) {
+                app.cookiesAccepted = cookiesConsent === 'true';
+            } else {
+                // Show cookie banner if no consent has been given
+                setTimeout(() => {
+                    cookieBanner.classList.add('show');
+                }, 1000);
+            }
+            
+            // Apply initial language
+            applyLanguage(app.currentLanguage);
+            
+            // Track initial page load
+            ObservabilitySDK.trackEvent('page_loaded', {
+                language: app.currentLanguage,
+                theme: app.currentTheme,
+                timestamp: new Date().toISOString()
+            });
+            
+            // Measure performance metrics
+            if ('performance' in window) {
+                window.addEventListener('load', () => {
+                    const perfData = performance.getEntriesByType('navigation')[0];
+                    if (perfData) {
+                        ObservabilitySDK.trackPerformance('FCP', perfData.responseStart - perfData.requestStart);
+                        ObservabilitySDK.trackPerformance('DOM_Loaded', perfData.domContentLoadedEventEnd - perfData.navigationStart);
+                    }
+                });
+            }
+        }
+        
+        // Apply language
+        function applyLanguage(lang) {
+            const translations = i18n[lang];
+            if (!translations) return;
+            
+            // Update text content
+            helloText.textContent = translations.hello;
+            document.querySelector('label[for="language-select"]').textContent = translations.language;
+            document.querySelector('label[for="theme-toggle"]').textContent = translations.theme;
+            acceptCookiesBtn.textContent = translations.accept;
+            rejectCookiesBtn.textContent = translations.reject;
+            document.getElementById('cookie-title').textContent = translations.cookieTitle;
+            document.getElementById('cookie-description').textContent = translations.cookieDescription;
+            
+            // Update footer
+            const footerLinks = document.querySelectorAll('footer a');
+            footerLinks[0].textContent = translations.privacy;
+            footerLinks[1].textContent = translations.terms;
+            document.querySelector('footer p').innerHTML = `${translations.footer} <a href="#privacy-policy">${translations.privacy}</a> | <a href="#terms-of-service">${translations.terms}</a>`;
+            
+            // Set document language and direction
+            document.documentElement.lang = lang;
+            if (lang === 'ar') {
+                document.documentElement.dir = 'rtl';
+            } else {
+                document.documentElement.dir = 'ltr';
+            }
+            
+            // Track language change
+            ObservabilitySDK.trackEvent('language_changed', {
+                from: app.currentLanguage,
+                to: lang,
+                timestamp: new Date().toISOString()
+            });
+            
+            app.currentLanguage = lang;
+            localStorage.setItem('language', lang);
+        }
+        
+        // Apply theme
+        function applyTheme(theme) {
+            if (theme === 'dark') {
+                document.documentElement.setAttribute('data-theme', 'dark');
+                themeToggle.textContent = '☀️';
+            } else {
+                document.documentElement.removeAttribute('data-theme');
+                themeToggle.textContent = '🌙';
+            }
+            
+            // Track theme change
+            ObservabilitySDK.trackEvent('theme_changed', {
+                from: app.currentTheme,
+                to: theme,
+                timestamp: new Date().toISOString()
+            });
+            
+            app.currentTheme = theme;
+            localStorage.setItem('theme', theme);
+        }
+        
+        // Toggle theme
+        function toggleTheme() {
+            const newTheme = app.currentTheme === 'light' ? 'dark' : 'light';
+            applyTheme(newTheme);
+        }
+        
+        // Handle cookie consent
+        function handleCookieConsent(accepted) {
+            app.cookiesAccepted = accepted;
+            localStorage.setItem('cookiesConsent', accepted.toString());
+            cookieBanner.classList.remove('show');
+            
+            // Track cookie consent
+            ObservabilitySDK.trackEvent('cookie_consent', {
+                accepted: accepted,
+                timestamp: new Date().toISOString()
+            });
+        }
+        
+        // Event listeners
+        languageSelect.addEventListener('change', (e) => {
+            applyLanguage(e.target.value);
+        });
+        
+        themeToggle.addEventListener('click', toggleTheme);
+        
+        acceptCookiesBtn.addEventListener('click', () => handleCookieConsent(true));
+        rejectCookiesBtn.addEventListener('click', () => handleCookieConsent(false));
+        
+        helloText.addEventListener('click', () => {
+            // Add animation effect
+            helloText.style.animation = 'pulse 0.5s ease';
+            setTimeout(() => {
+                helloText.style.animation = '';
+            }, 500);
+
+            // Track text click
+            ObservabilitySDK.trackEvent('text_clicked', {
+                text: helloText.textContent,
+                language: app.currentLanguage,
+                timestamp: new Date().toISOString()
+            });
+        });
+        
+        // Global error handler
+        window.addEventListener('error', (e) => {
+            ObservabilitySDK.trackError(e.error, {
+                filename: e.filename,
+                lineno: e.lineno,
+                colno: e.colno,
+                message: e.message
+            });
+        });
+        
+        // Unhandled promise rejection handler
+        window.addEventListener('unhandledrejection', (e) => {
+            ObservabilitySDK.trackError(e.reason, {
+                type: 'unhandledrejection'
+            });
+        });
+        
+        // Initialize the application when DOM is ready
+
+        // Service Worker registration for offline support
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js')
+                    .then(registration => {
+                        console.log('SW registered: ', registration);
+                        ObservabilitySDK.trackEvent('service_worker_registered', { success: true });
+                    })
+                    .catch(registrationError => {
+                        console.log('SW registration failed: ', registrationError);
+                        ObservabilitySDK.trackError(registrationError, { context: 'service_worker_registration' });
+                    });
+            });
+        }
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', init);
+        } else {
+            init();
+        }
+    </script>
+</body>
+</html>

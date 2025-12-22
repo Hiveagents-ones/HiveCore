@@ -1,0 +1,44 @@
+{
+  "register": {
+    "title": "Member Registration",
+    "form": {
+      "name": {
+        "label": "Full Name",
+        "placeholder": "Enter your full name",
+        "required": "Name is required",
+        "invalid": "Please enter a valid name"
+      },
+      "phone": {
+        "label": "Phone Number",
+        "placeholder": "Enter your phone number",
+        "required": "Phone number is required",
+        "invalid": "Please enter a valid phone number",
+        "duplicate": "This phone number is already registered"
+      },
+      "idCard": {
+        "label": "ID Card Number",
+        "placeholder": "Enter your ID card number",
+        "required": "ID card number is required",
+        "invalid": "Please enter a valid ID card number",
+        "duplicate": "This ID card number is already registered"
+      },
+      "membership": {
+        "label": "Membership Package",
+        "placeholder": "Select a membership package",
+        "required": "Please select a membership package",
+        "options": {
+          "basic": "Basic",
+          "standard": "Standard",
+          "premium": "Premium"
+        }
+      },
+      "submit": "Register",
+      "reset": "Reset Form"
+    },
+    "messages": {
+      "success": "Registration successful! Your member account has been created.",
+      "error": "Registration failed. Please try again.",
+      "loading": "Processing registration..."
+    }
+  }
+}

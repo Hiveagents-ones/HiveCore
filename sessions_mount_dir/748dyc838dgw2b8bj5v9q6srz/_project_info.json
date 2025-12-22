@@ -1,0 +1,16 @@
+{
+  "project_type": "fullstack",
+  "files": [
+    "backend/app/main.py",
+    "frontend/package.json"
+  ],
+  "setup_commands": [
+    "cd backend && pip install -r requirements.txt",
+    "cd frontend && npm install"
+  ],
+  "setup_executed": true,
+  "run_command": "docker-compose up -d",
+  "entry_point": "http://localhost:3000",
+  "runtime_mode": true,
+  "sandbox_id": "runtime_sandbox_container_e7tba80nzt6krhwy37kptv4rs"
+}

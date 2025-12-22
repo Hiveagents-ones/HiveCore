@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """Integration style tests for the One·s modules."""
-from agentscope.aa import AgentCapabilities, AgentProfile, StaticScore, RoleRequirement
+from agentscope.aa import AgentCapabilities, AgentProfile, StaticScore, Requirement
 from agentscope.agent import AgentBase
 from agentscope.message import Msg
 from agentscope.pipeline import MsgHub
@@ -40,7 +40,6 @@ def _mock_agent(agent_id: str) -> AgentProfile:
     return AgentProfile(
         agent_id=agent_id,
         name=agent_id,
-        role="Dev",
         static_score=StaticScore(performance=0.9, brand=0.8, recognition=0.85),
         capabilities=AgentCapabilities(
             skills={"python", "rag"},
@@ -67,14 +66,14 @@ def test_end_to_end_cycle() -> None:
     )
     registry = SystemRegistry()
     orchestrator = AssistantOrchestrator(system_registry=registry)
-    orchestrator.register_candidates("Dev", [_mock_agent("dev-1")])
+    orchestrator.register_candidates([_mock_agent("dev-1")])
 
     intent = IntentRequest(
         user_id="u-1",
         utterance="需要部署一个RAG服务",
         project_id="proj-1",
-        role_requirements={
-            "task-1": RoleRequirement(role="Dev", skills={"python", "rag"}, tools={"docker"}),
+        requirements={
+            "task-1": Requirement(skills={"python", "rag"}, tools={"docker"}),
         },
     )
     acceptance = AcceptanceCriteria(
@@ -127,24 +126,20 @@ def test_end_to_end_cycle() -> None:
 def test_round_persistence_and_replan(tmp_path) -> None:
     registry = SystemRegistry()
     orchestrator = AssistantOrchestrator(system_registry=registry)
-    orchestrator.register_candidates(
-        "Dev",
-        [
-            AgentProfile(
-                agent_id="dev-round",
-                name="dev-round",
-                role="Dev",
-                static_score=StaticScore(performance=0.8, brand=0.7, recognition=0.75),
-                capabilities=AgentCapabilities(skills={"python"}, tools={"docker"}),
-            ),
-        ],
-    )
+    orchestrator.register_candidates([
+        AgentProfile(
+            agent_id="dev-round",
+            name="dev-round",
+            static_score=StaticScore(performance=0.8, brand=0.7, recognition=0.75),
+            capabilities=AgentCapabilities(skills={"python"}, tools={"docker"}),
+        ),
+    ])
 
     intent = IntentRequest(
         user_id="u-round",
         utterance="需要多轮次交付",
-        role_requirements={
-            "task-1": RoleRequirement(role="Dev", skills={"python"}, tools={"docker"}),
+        requirements={
+            "task-1": Requirement(skills={"python"}, tools={"docker"}),
         },
     )
     acceptance = AcceptanceCriteria(description="Quality", metrics={"quality": 0.8})

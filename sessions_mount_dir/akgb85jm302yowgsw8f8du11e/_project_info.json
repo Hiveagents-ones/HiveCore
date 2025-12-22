@@ -1,0 +1,26 @@
+{
+  "project_type": "web",
+  "files": [
+    "frontend/src/views/RenewalView.vue",
+    "backend/app/models.py",
+    "backend/app/schemas.py",
+    "backend/app/services/payment_gateway.py",
+    "backend/app/routers/membership.py",
+    "backend/app/routers/payment.py",
+    "frontend/src/components/PaymentModal.vue",
+    "backend/app/core/security.py",
+    "backend/app/core/logging.py",
+    "backend/app/services/providers/wechat.py",
+    "backend/app/services/providers/alipay.py",
+    "frontend/src/locales/zh.json",
+    "frontend/src/locales/en.json",
+    "docs/database.md",
+    "docs/api.md"
+  ],
+  "setup_commands": [],
+  "setup_executed": false,
+  "run_command": "",
+  "entry_point": "",
+  "runtime_mode": true,
+  "sandbox_id": "runtime_sandbox_container_4d6qr6g7ju738o60csn8mveu4"
+}

@@ -1,0 +1,14 @@
+{
+  "project_type": "frontend",
+  "files": [
+    "index.html",
+    "style.css",
+    "script.js"
+  ],
+  "setup_commands": [],
+  "setup_executed": false,
+  "run_command": "open index.html",
+  "entry_point": "index.html",
+  "runtime_mode": true,
+  "sandbox_id": "runtime_sandbox_container_5ud3r4oi2oruqtlt5a31iqy1m"
+}

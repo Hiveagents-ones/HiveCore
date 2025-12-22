@@ -1,0 +1,30 @@
+{
+  "project_type": "web",
+  "files": [
+    "backend/app/main.py",
+    "backend/app/models/payment.py",
+    "backend/app/schemas/payment.py",
+    "backend/app/crud/payment.py",
+    "backend/app/core/payment_gateway.py",
+    "backend/app/gateways/alipay.py",
+    "backend/app/gateways/wechat_pay.py",
+    "backend/app/gateways/stripe.py",
+    "backend/app/api/v1/endpoints/membership.py",
+    "backend/app/api/v1/endpoints/payments.py",
+    "backend/alembic/versions/xxxx_create_payment_tables.py",
+    "frontend/src/views/MemberPlans.vue",
+    "frontend/src/api/payment.js",
+    "frontend/src/views/Payment.vue",
+    "frontend/src/views/PaymentHistory.vue",
+    "frontend/src/stores/payment.js",
+    "frontend/src/router/index.js",
+    "docker-compose.yml",
+    "_project_info.json"
+  ],
+  "setup_commands": [],
+  "setup_executed": false,
+  "run_command": "",
+  "entry_point": "",
+  "runtime_mode": true,
+  "sandbox_id": "runtime_sandbox_container_0hkib7tz6epht66qnsorwq72v"
+}

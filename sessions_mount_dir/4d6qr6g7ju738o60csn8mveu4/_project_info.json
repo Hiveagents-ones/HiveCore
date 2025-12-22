@@ -1,0 +1,19 @@
+{
+  "project_type": "web",
+  "files": [
+    "frontend/src/services/api.js",
+    "frontend/src/stores/register.js",
+    "backend/app/schemas.py",
+    "backend/app/models.py",
+    "backend/app/routers/register.py",
+    "frontend/src/locales/zh.json",
+    "frontend/src/locales/en.json",
+    "frontend/src/views/RegisterView.vue"
+  ],
+  "setup_commands": [],
+  "setup_executed": false,
+  "run_command": "",
+  "entry_point": "",
+  "runtime_mode": true,
+  "sandbox_id": "runtime_sandbox_container_amabdpzh9nfnsdfjxmj6iawwv"
+}

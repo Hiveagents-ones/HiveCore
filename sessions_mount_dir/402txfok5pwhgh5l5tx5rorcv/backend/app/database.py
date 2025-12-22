@@ -1,0 +1,36 @@
+from sqlalchemy import create_engine
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
+
+# 数据库连接配置
+# 使用环境变量配置数据库连接，提高安全性和灵活性
+import os
+SQLALCHEMY_DATABASE_URL = os.getenv(
+    "DATABASE_URL",
+    "postgresql://user:password@localhost/dbname"
+)
+
+# 添加连接池配置，优化性能
+engine = create_engine(
+    SQLALCHEMY_DATABASE_URL,
+    pool_size=10,
+    max_overflow=20,
+    pool_pre_ping=True,
+    echo=False  # 生产环境关闭SQL日志
+
+# 创建数据库引擎
+engine = create_engine(SQLALCHEMY_DATABASE_URL)
+
+# 创建会话工厂
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+# 创建基础模型类
+Base = declarative_base()
+
+# 依赖注入函数，用于获取数据库会话
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()

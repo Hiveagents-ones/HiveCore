@@ -248,7 +248,8 @@ class AgentBase(StateModule, metaclass=_AgentMeta):
             if "text" in stream_prefix and not stream_prefix["text"].endswith(
                 "\n",
             ):
-                print()
+                from ..scripts._observability import get_logger
+                get_logger().stream("", end="\n")
 
     def _process_audio_block(
         self,
@@ -378,7 +379,8 @@ class AgentBase(StateModule, metaclass=_AgentMeta):
 
         # Only print when there is new text content
         if len(to_print) > len(text_prefix):
-            print(to_print[len(text_prefix) :], end="")
+            from ..scripts._observability import get_logger
+            get_logger().stream(to_print[len(text_prefix):])
 
             # Save the printed text prefix
             self._stream_prefix[msg_id]["text"] = to_print
@@ -399,15 +401,18 @@ class AgentBase(StateModule, metaclass=_AgentMeta):
         """
         text_prefix = self._stream_prefix.get(msg.id, {}).get("text", "")
 
+        from ..scripts._observability import get_logger
+        logger = get_logger()
+
         if text_prefix:
             # Add a newline to separate from previous text content
             print_newline = "" if text_prefix.endswith("\n") else "\n"
-            print(
+            logger.info(
                 f"{print_newline}"
                 f"{json.dumps(block, indent=4, ensure_ascii=False)}",
             )
         else:
-            print(
+            logger.info(
                 f"{msg.name}:"
                 f" {json.dumps(block, indent=4, ensure_ascii=False)}",
             )

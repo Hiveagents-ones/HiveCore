@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """The base MCP stateful client class in AgentScope, that provides basic
  functionality for stateful MCP clients."""
+import asyncio
 from abc import ABC
 from contextlib import AsyncExitStack
 from typing import List
@@ -81,6 +82,10 @@ class StatefulClientBase(MCPClientBase, ABC):
         try:
             await self.stack.aclose()
             logger.info("MCP client closed.")
+        except asyncio.CancelledError:
+            # CancelledError doesn't inherit from Exception in Python 3.8+
+            # Handle it gracefully during cleanup
+            logger.warning("MCP client cleanup was cancelled")
         except Exception as e:
             logger.warning("Error during MCP client cleanup: %s", e)
         finally:

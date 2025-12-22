@@ -1,0 +1,28 @@
+{
+  "project_type": "web",
+  "files": [
+    "backend/app/main.py",
+    "backend/app/models.py",
+    "frontend/src/main.js",
+    "backend/app/security.py",
+    "frontend/src/router/index.js",
+    "frontend/src/stores/auth.js",
+    "backend/app/schemas.py",
+    "backend/app/crud.py",
+    "backend/app/dependencies.py",
+    "frontend/src/api/index.js",
+    "backend/app/api/v1/endpoints/members.py",
+    "frontend/src/views/MemberList.vue",
+    "frontend/src/views/MemberForm.vue",
+    "frontend/src/locales/en.json",
+    "frontend/src/locales/zh.json",
+    "docker-compose.yml",
+    "README.md"
+  ],
+  "setup_commands": [],
+  "setup_executed": false,
+  "run_command": "",
+  "entry_point": "",
+  "runtime_mode": true,
+  "sandbox_id": "runtime_sandbox_container_60zvgbaej59oyvs8wovlk6n4k"
+}

@@ -126,6 +126,10 @@ async def write_text_file(
     """
 
     if not os.path.exists(file_path):
+        # Create parent directories if they don't exist
+        parent_dir = os.path.dirname(file_path)
+        if parent_dir and not os.path.exists(parent_dir):
+            os.makedirs(parent_dir, exist_ok=True)
         with open(file_path, "w", encoding="utf-8") as file:
             file.write(content)
 
