@@ -144,9 +144,12 @@ async def run_execution(
     # Track which files are shared across requirements (for regression detection)
     file_to_requirements: dict[str, set[str]] = {}
 
-    # Track scaffold initialization to avoid re-running in subsequent rounds
-    # Key: scaffold type (e.g., "frontend", "backend"), Value: True if initialized
+    # Track scaffold initialization to avoid re-running project creation commands
+    # Key: scaffold type (e.g., "frontend", "backend"), Value: True if project created
     scaffold_initialized: dict[str, bool] = {}
+    # Track installed packages to enable incremental dependency installation
+    # Key: scaffold type, Value: set of installed package names
+    installed_packages: dict[str, set[str]] = {"frontend": set(), "backend": set()}
 
     def _track_modified_files(rid: str, files: list[str]) -> None:
         """Track files modified by a requirement for regression detection.
@@ -466,53 +469,44 @@ async def run_execution(
             files_plan = blueprint.get("files_plan", [])
             scaffold_config = blueprint.get("scaffold")
 
-            # Scaffold mode - only run initialization commands once per scaffold type
+            # Scaffold mode - incremental package installation support
             if generation_mode == "scaffold" and scaffold_config and runtime_workspace:
-                # Determine scaffold types from config
-                scaffold_types_to_init = []
-                if scaffold_config.get("frontend") and not scaffold_initialized.get("frontend"):
-                    scaffold_types_to_init.append("frontend")
-                if scaffold_config.get("backend") and not scaffold_initialized.get("backend"):
-                    scaffold_types_to_init.append("backend")
-
-                if scaffold_types_to_init:
-                    # Only run scaffold commands for uninitialized types
-                    observer.on_scaffold_mode_start(rid)
-                    # Filter config to only include uninitialized types
-                    filtered_config = {
-                        k: v for k, v in scaffold_config.items()
-                        if k in scaffold_types_to_init or k not in ("frontend", "backend")
-                    }
-                    scaffold_result = await run_scaffold_commands(
-                        runtime_workspace=runtime_workspace,
-                        scaffold_config=filtered_config,
-                        llm=llm,
-                        verbose=verbose,
-                    )
-                    if not scaffold_result["success"]:
-                        observer.on_scaffold_mode_fallback(rid)
-                        generation_mode = "stepwise"
-                    else:
-                        # Mark scaffold types as initialized
-                        for stype in scaffold_types_to_init:
-                            scaffold_initialized[stype] = True
-                        if workspace_dir:
-                            synced = runtime_workspace.sync_to_local(workspace_dir)
-                            # Filter out node_modules for cleaner logging
-                            source_files = [f for f in synced if "node_modules" not in f and "__pycache__" not in f]
-                            observer.on_scaffold_sync(rid, len(synced), len(source_files))
-                            if source_files and verbose:
-                                for sf in source_files[:20]:  # Show max 20 source files
-                                    observer.on_file_written(rid, sf)
-                                if len(source_files) > 20:
-                                    observer.ctx.logger.debug(f"[{rid}]   ... 还有 {len(source_files) - 20} 个源文件")
+                observer.on_scaffold_mode_start(rid)
+                scaffold_result = await run_scaffold_commands(
+                    runtime_workspace=runtime_workspace,
+                    scaffold_config=scaffold_config,
+                    llm=llm,
+                    scaffold_initialized=scaffold_initialized,
+                    installed_packages=installed_packages,
+                    verbose=verbose,
+                )
+                if not scaffold_result["success"]:
+                    observer.on_scaffold_mode_fallback(rid)
+                    generation_mode = "stepwise"
                 else:
-                    # Scaffold already initialized, just sync files
-                    observer.on_scaffold_skip(rid, "脚手架已初始化")
+                    # Update tracking state from result
+                    if scaffold_result.get("initialized", {}).get("frontend"):
+                        scaffold_initialized["frontend"] = True
+                    if scaffold_result.get("initialized", {}).get("backend"):
+                        scaffold_initialized["backend"] = True
+
+                    # Track newly installed packages
+                    new_pkgs = scaffold_result.get("new_packages", {})
+                    if new_pkgs.get("frontend"):
+                        installed_packages["frontend"].update(new_pkgs["frontend"])
+                    if new_pkgs.get("backend"):
+                        installed_packages["backend"].update(new_pkgs["backend"])
+
                     if workspace_dir:
                         synced = runtime_workspace.sync_to_local(workspace_dir)
+                        # Filter out node_modules for cleaner logging
                         source_files = [f for f in synced if "node_modules" not in f and "__pycache__" not in f]
                         observer.on_scaffold_sync(rid, len(synced), len(source_files))
+                        if source_files and verbose:
+                            for sf in source_files[:20]:  # Show max 20 source files
+                                observer.on_file_written(rid, sf)
+                            if len(source_files) > 20:
+                                observer.ctx.logger.debug(f"[{rid}]   ... 还有 {len(source_files) - 20} 个源文件")
 
             # Generate implementation
             if use_collaborative_agents and workspace_dir:

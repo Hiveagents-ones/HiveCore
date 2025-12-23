@@ -582,30 +582,140 @@ def sort_files_by_dependency(files_plan: list[dict[str, Any]]) -> list[dict[str,
 # ---------------------------------------------------------------------------
 # Scaffold Commands
 # ---------------------------------------------------------------------------
+def _parse_npm_packages(command: str) -> set[str]:
+    """Extract package names from npm install command.
+
+    Args:
+        command: npm install command string
+
+    Returns:
+        Set of package names
+    """
+    import re
+    packages: set[str] = set()
+    # Match npm install <packages> pattern
+    match = re.search(r'npm install\s+(.+?)(?:&&|$)', command)
+    if match:
+        pkg_str = match.group(1).strip()
+        # Split by space, filter out flags (starting with -)
+        for pkg in pkg_str.split():
+            if not pkg.startswith('-') and pkg:
+                # Remove version specifier if present (e.g., package@1.0.0)
+                pkg_name = pkg.split('@')[0] if '@' in pkg and not pkg.startswith('@') else pkg
+                packages.add(pkg_name)
+    return packages
+
+
+def _parse_pip_packages(command: str) -> set[str]:
+    """Extract package names from pip install command.
+
+    Args:
+        command: pip install command string
+
+    Returns:
+        Set of package names
+    """
+    import re
+    packages: set[str] = set()
+    # Match pip install <packages> pattern
+    match = re.search(r'pip install\s+(.+?)(?:&&|$)', command)
+    if match:
+        pkg_str = match.group(1).strip()
+        for pkg in pkg_str.split():
+            if not pkg.startswith('-') and pkg:
+                # Remove version specifier and extras
+                pkg_name = pkg.split('[')[0].split('==')[0].split('>=')[0].split('<=')[0]
+                packages.add(pkg_name)
+    return packages
+
+
+def _build_incremental_command(
+    original_cmd: str,
+    scaffold_type: str,
+    is_initialized: bool,
+    installed_packages: set[str],
+) -> tuple[str | None, set[str]]:
+    """Build incremental scaffold command.
+
+    Args:
+        original_cmd: Original scaffold command
+        scaffold_type: "frontend" or "backend"
+        is_initialized: Whether project is already initialized
+        installed_packages: Set of already installed packages
+
+    Returns:
+        Tuple of (command to execute or None, new packages to track)
+    """
+    import re
+
+    if scaffold_type == "frontend":
+        # Parse npm packages
+        new_packages = _parse_npm_packages(original_cmd)
+        packages_to_install = new_packages - installed_packages
+
+        if is_initialized:
+            # Project already exists, only install new packages
+            if packages_to_install:
+                install_cmd = f"cd frontend && npm install {' '.join(sorted(packages_to_install))}"
+                return install_cmd, new_packages
+            else:
+                return None, set()  # Nothing to do
+        else:
+            # First time: run full command
+            return original_cmd, new_packages
+
+    elif scaffold_type == "backend":
+        # Parse pip packages
+        new_packages = _parse_pip_packages(original_cmd)
+        packages_to_install = new_packages - installed_packages
+
+        if is_initialized:
+            # Project already exists, only install new packages
+            if packages_to_install:
+                install_cmd = f"pip install {' '.join(sorted(packages_to_install))}"
+                return install_cmd, new_packages
+            else:
+                return None, set()  # Nothing to do
+        else:
+            # First time: run full command
+            return original_cmd, new_packages
+
+    return original_cmd, set()
+
+
 async def run_scaffold_commands(
     runtime_workspace: "RuntimeWorkspace",
     scaffold_config: dict[str, Any],
     llm: Any,
     *,
+    scaffold_initialized: dict[str, bool] | None = None,
+    installed_packages: dict[str, set[str]] | None = None,
     verbose: bool = False,
 ) -> dict[str, Any]:
-    """Execute scaffold initialization commands.
+    """Execute scaffold initialization commands with incremental package installation.
 
     Args:
         runtime_workspace: RuntimeWorkspace instance
         scaffold_config: Scaffold configuration
         llm: LLM for result judgment
+        scaffold_initialized: Dict tracking which scaffold types are initialized
+        installed_packages: Dict tracking installed packages per scaffold type
         verbose: Whether to print debug info
 
     Returns:
-        dict: Execution result
+        dict: Execution result with new_packages info
     """
     result = {
         "success": True,
         "commands_executed": [],
         "outputs": [],
         "errors": [],
+        "new_packages": {"frontend": set(), "backend": set()},
+        "initialized": {"frontend": False, "backend": False},
     }
+
+    scaffold_initialized = scaffold_initialized or {}
+    installed_packages = installed_packages or {"frontend": set(), "backend": set()}
 
     async def execute_cmd(cmd: str, description: str, timeout: int = 300) -> bool:
         from ._observability import get_logger
@@ -633,16 +743,46 @@ async def run_scaffold_commands(
     # Frontend scaffold
     frontend_cfg = scaffold_config.get("frontend")
     if frontend_cfg and frontend_cfg.get("command"):
-        await execute_cmd(frontend_cfg["command"], "前端初始化")
-        for post_cmd in frontend_cfg.get("post_init", []):
-            await execute_cmd(post_cmd, "前端 post_init", timeout=600)
+        is_init = scaffold_initialized.get("frontend", False)
+        cmd, new_pkgs = _build_incremental_command(
+            frontend_cfg["command"],
+            "frontend",
+            is_init,
+            installed_packages.get("frontend", set()),
+        )
+        if cmd:
+            desc = "前端增量安装" if is_init else "前端初始化"
+            await execute_cmd(cmd, desc)
+            result["new_packages"]["frontend"] = new_pkgs
+            if not is_init:
+                result["initialized"]["frontend"] = True
+
+        # Post-init commands only run on first initialization
+        if not is_init:
+            for post_cmd in frontend_cfg.get("post_init", []):
+                await execute_cmd(post_cmd, "前端 post_init", timeout=600)
 
     # Backend scaffold
     backend_cfg = scaffold_config.get("backend")
     if backend_cfg and backend_cfg.get("command"):
-        await execute_cmd(backend_cfg["command"], "后端初始化")
-        for post_cmd in backend_cfg.get("post_init", []):
-            await execute_cmd(post_cmd, "后端 post_init", timeout=600)
+        is_init = scaffold_initialized.get("backend", False)
+        cmd, new_pkgs = _build_incremental_command(
+            backend_cfg["command"],
+            "backend",
+            is_init,
+            installed_packages.get("backend", set()),
+        )
+        if cmd:
+            desc = "后端增量安装" if is_init else "后端初始化"
+            await execute_cmd(cmd, desc)
+            result["new_packages"]["backend"] = new_pkgs
+            if not is_init:
+                result["initialized"]["backend"] = True
+
+        # Post-init commands only run on first initialization
+        if not is_init:
+            for post_cmd in backend_cfg.get("post_init", []):
+                await execute_cmd(post_cmd, "后端 post_init", timeout=600)
 
     return result
 
