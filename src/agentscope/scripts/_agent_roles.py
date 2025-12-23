@@ -296,8 +296,16 @@ async def design_requirement(
           "recommended_stack": "...",
           "generation_mode": "single|stepwise|scaffold",
           "scaffold": {{
-            "frontend": {{"tool": "vite", "template": "vue", "command": "..."}},
-            "backend": {{"tool": "fastapi", "command": "..."}}
+            "frontend": {{
+              "init_command": "npm create vite@latest frontend --template vue",
+              "install_template": "cd frontend && npm install {{packages}}",
+              "packages": ["element-plus", "axios", "vue-router"]
+            }},
+            "backend": {{
+              "init_command": null,
+              "install_template": "pip install {{packages}}",
+              "packages": ["fastapi", "sqlalchemy", "passlib[bcrypt]"]
+            }}
           }},
           "files_plan": [
             {{"path": "...", "description": "...", "action": "create|modify", "priority": 1}}
@@ -308,6 +316,11 @@ async def design_requirement(
         - single: 简单项目（单文件）
         - stepwise: 复杂项目（多文件分步生成）
         - scaffold: 使用脚手架初始化后生成业务代码
+
+        【scaffold 配置说明】
+        - init_command: 项目初始化命令（只执行一次，如 npm create、django-admin startproject）
+        - install_template: 增量安装依赖的命令模板，{{packages}} 会被替换为包列表
+        - packages: 本需求所需的依赖包列表（会与已安装的包合并，只安装新增的）
 
         输出合法 JSON。
     """)
@@ -580,132 +593,69 @@ def sort_files_by_dependency(files_plan: list[dict[str, Any]]) -> list[dict[str,
 
 
 # ---------------------------------------------------------------------------
-# Scaffold Commands - Package Manager Configurations
+# Scaffold Commands - LLM-driven package management
 # ---------------------------------------------------------------------------
-# Extensible package manager configurations
-# Each entry: (pattern, package_extractor, install_command_builder, working_dir)
-_PACKAGE_MANAGERS: dict[str, list[dict[str, Any]]] = {
-    "frontend": [
-        {
-            "name": "npm",
-            "pattern": r'npm install\s+(.+?)(?:&&|$)',
-            "version_split": "@",  # element-plus@1.0.0 -> element-plus
-            "install_cmd": "cd frontend && npm install {packages}",
-        },
-        {
-            "name": "yarn",
-            "pattern": r'yarn add\s+(.+?)(?:&&|$)',
-            "version_split": "@",
-            "install_cmd": "cd frontend && yarn add {packages}",
-        },
-        {
-            "name": "pnpm",
-            "pattern": r'pnpm (?:add|install)\s+(.+?)(?:&&|$)',
-            "version_split": "@",
-            "install_cmd": "cd frontend && pnpm add {packages}",
-        },
-    ],
-    "backend": [
-        {
-            "name": "pip",
-            "pattern": r'pip install\s+(.+?)(?:&&|$)',
-            "version_split": "[=><",  # package[extra]==1.0.0 -> package
-            "install_cmd": "pip install {packages}",
-        },
-        {
-            "name": "poetry",
-            "pattern": r'poetry add\s+(.+?)(?:&&|$)',
-            "version_split": "@",
-            "install_cmd": "poetry add {packages}",
-        },
-        {
-            "name": "cargo",
-            "pattern": r'cargo add\s+(.+?)(?:&&|$)',
-            "version_split": "@",
-            "install_cmd": "cargo add {packages}",
-        },
-        {
-            "name": "go",
-            "pattern": r'go get\s+(.+?)(?:&&|$)',
-            "version_split": "@",
-            "install_cmd": "go get {packages}",
-        },
-    ],
-}
-
-
-def _parse_packages_from_command(command: str, scaffold_type: str) -> tuple[set[str], dict[str, Any] | None]:
-    """Extract package names from scaffold command using configured package managers.
-
-    Args:
-        command: Scaffold command string
-        scaffold_type: "frontend" or "backend"
-
-    Returns:
-        Tuple of (set of package names, matched package manager config or None)
-    """
-    import re
-    managers = _PACKAGE_MANAGERS.get(scaffold_type, [])
-
-    for manager in managers:
-        match = re.search(manager["pattern"], command)
-        if match:
-            packages: set[str] = set()
-            pkg_str = match.group(1).strip()
-            version_split = manager.get("version_split", "@")
-
-            for pkg in pkg_str.split():
-                if not pkg.startswith('-') and pkg:
-                    # Handle version specifiers
-                    pkg_name = pkg
-                    for char in version_split:
-                        if char in pkg_name and not pkg_name.startswith('@'):
-                            pkg_name = pkg_name.split(char)[0]
-                    if pkg_name:
-                        packages.add(pkg_name)
-
-            return packages, manager
-
-    return set(), None
-
-
-def _build_incremental_command(
-    original_cmd: str,
+def _build_scaffold_commands(
+    config: dict[str, Any],
     scaffold_type: str,
     is_initialized: bool,
     installed_packages: set[str],
-) -> tuple[str | None, set[str]]:
-    """Build incremental scaffold command.
+) -> tuple[list[str], set[str]]:
+    """Build scaffold commands based on LLM-provided configuration.
+
+    The LLM provides:
+    - init_command: Project initialization (run once)
+    - install_template: Template for installing packages ({packages} placeholder)
+    - packages: List of required packages
 
     Args:
-        original_cmd: Original scaffold command
-        scaffold_type: "frontend" or "backend"
+        config: Scaffold config from blueprint (e.g., frontend or backend section)
+        scaffold_type: "frontend" or "backend" (for logging)
         is_initialized: Whether project is already initialized
         installed_packages: Set of already installed packages
 
     Returns:
-        Tuple of (command to execute or None, new packages to track)
+        Tuple of (list of commands to execute, set of packages to track)
     """
-    new_packages, manager = _parse_packages_from_command(original_cmd, scaffold_type)
+    commands: list[str] = []
+    packages_to_track: set[str] = set()
 
-    if not manager:
-        # Unknown package manager, run original command
-        return original_cmd if not is_initialized else None, set()
+    if not config:
+        return commands, packages_to_track
 
-    packages_to_install = new_packages - installed_packages
+    # Handle legacy format (single "command" field)
+    if "command" in config and "packages" not in config:
+        # Legacy: just run the command if not initialized
+        if not is_initialized:
+            commands.append(config["command"])
+        return commands, packages_to_track
 
-    if is_initialized:
-        # Project already exists, only install new packages
-        if packages_to_install:
-            install_cmd = manager["install_cmd"].format(
-                packages=' '.join(sorted(packages_to_install))
-            )
-            return install_cmd, new_packages
-        else:
-            return None, set()  # Nothing to do
+    # New format with explicit init_command, install_template, packages
+    init_cmd = config.get("init_command")
+    install_template = config.get("install_template")
+    packages = config.get("packages", [])
+
+    # Convert packages to set for tracking
+    required_packages = set(packages) if isinstance(packages, list) else set()
+    packages_to_track = required_packages
+
+    if not is_initialized:
+        # First time: run init command if provided
+        if init_cmd:
+            commands.append(init_cmd)
+
+        # Install all packages
+        if install_template and required_packages:
+            install_cmd = install_template.replace("{packages}", ' '.join(sorted(required_packages)))
+            commands.append(install_cmd)
     else:
-        # First time: run full command
-        return original_cmd, new_packages
+        # Already initialized: only install new packages
+        new_packages = required_packages - installed_packages
+        if install_template and new_packages:
+            install_cmd = install_template.replace("{packages}", ' '.join(sorted(new_packages)))
+            commands.append(install_cmd)
+
+    return commands, packages_to_track
 
 
 async def run_scaffold_commands(
@@ -767,20 +717,21 @@ async def run_scaffold_commands(
 
     # Frontend scaffold
     frontend_cfg = scaffold_config.get("frontend")
-    if frontend_cfg and frontend_cfg.get("command"):
+    if frontend_cfg:
         is_init = scaffold_initialized.get("frontend", False)
-        cmd, new_pkgs = _build_incremental_command(
-            frontend_cfg["command"],
+        commands, new_pkgs = _build_scaffold_commands(
+            frontend_cfg,
             "frontend",
             is_init,
             installed_packages.get("frontend", set()),
         )
-        if cmd:
+        for cmd in commands:
             desc = "前端增量安装" if is_init else "前端初始化"
             await execute_cmd(cmd, desc)
+        if new_pkgs:
             result["new_packages"]["frontend"] = new_pkgs
-            if not is_init:
-                result["initialized"]["frontend"] = True
+        if not is_init and commands:
+            result["initialized"]["frontend"] = True
 
         # Post-init commands only run on first initialization
         if not is_init:
@@ -789,20 +740,21 @@ async def run_scaffold_commands(
 
     # Backend scaffold
     backend_cfg = scaffold_config.get("backend")
-    if backend_cfg and backend_cfg.get("command"):
+    if backend_cfg:
         is_init = scaffold_initialized.get("backend", False)
-        cmd, new_pkgs = _build_incremental_command(
-            backend_cfg["command"],
+        commands, new_pkgs = _build_scaffold_commands(
+            backend_cfg,
             "backend",
             is_init,
             installed_packages.get("backend", set()),
         )
-        if cmd:
+        for cmd in commands:
             desc = "后端增量安装" if is_init else "后端初始化"
             await execute_cmd(cmd, desc)
+        if new_pkgs:
             result["new_packages"]["backend"] = new_pkgs
-            if not is_init:
-                result["initialized"]["backend"] = True
+        if not is_init and commands:
+            result["initialized"]["backend"] = True
 
         # Post-init commands only run on first initialization
         if not is_init:
