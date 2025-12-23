@@ -717,9 +717,7 @@ async def run_execution(
             total = max(len(crit), 1)
             pass_ratio = passed / total
 
-            # Changed: removed `passed == total` requirement to allow partial pass
-            # Now only checks if pass_ratio meets the threshold (default 0.85)
-            static_passed = pass_ratio >= overall_target
+            static_passed = pass_ratio >= overall_target and passed == total
             code_validation_passed = True
             code_validation_score = 1.0
 
