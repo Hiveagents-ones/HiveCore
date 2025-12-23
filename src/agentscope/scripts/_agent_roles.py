@@ -580,53 +580,93 @@ def sort_files_by_dependency(files_plan: list[dict[str, Any]]) -> list[dict[str,
 
 
 # ---------------------------------------------------------------------------
-# Scaffold Commands
+# Scaffold Commands - Package Manager Configurations
 # ---------------------------------------------------------------------------
-def _parse_npm_packages(command: str) -> set[str]:
-    """Extract package names from npm install command.
+# Extensible package manager configurations
+# Each entry: (pattern, package_extractor, install_command_builder, working_dir)
+_PACKAGE_MANAGERS: dict[str, list[dict[str, Any]]] = {
+    "frontend": [
+        {
+            "name": "npm",
+            "pattern": r'npm install\s+(.+?)(?:&&|$)',
+            "version_split": "@",  # element-plus@1.0.0 -> element-plus
+            "install_cmd": "cd frontend && npm install {packages}",
+        },
+        {
+            "name": "yarn",
+            "pattern": r'yarn add\s+(.+?)(?:&&|$)',
+            "version_split": "@",
+            "install_cmd": "cd frontend && yarn add {packages}",
+        },
+        {
+            "name": "pnpm",
+            "pattern": r'pnpm (?:add|install)\s+(.+?)(?:&&|$)',
+            "version_split": "@",
+            "install_cmd": "cd frontend && pnpm add {packages}",
+        },
+    ],
+    "backend": [
+        {
+            "name": "pip",
+            "pattern": r'pip install\s+(.+?)(?:&&|$)',
+            "version_split": "[=><",  # package[extra]==1.0.0 -> package
+            "install_cmd": "pip install {packages}",
+        },
+        {
+            "name": "poetry",
+            "pattern": r'poetry add\s+(.+?)(?:&&|$)',
+            "version_split": "@",
+            "install_cmd": "poetry add {packages}",
+        },
+        {
+            "name": "cargo",
+            "pattern": r'cargo add\s+(.+?)(?:&&|$)',
+            "version_split": "@",
+            "install_cmd": "cargo add {packages}",
+        },
+        {
+            "name": "go",
+            "pattern": r'go get\s+(.+?)(?:&&|$)',
+            "version_split": "@",
+            "install_cmd": "go get {packages}",
+        },
+    ],
+}
+
+
+def _parse_packages_from_command(command: str, scaffold_type: str) -> tuple[set[str], dict[str, Any] | None]:
+    """Extract package names from scaffold command using configured package managers.
 
     Args:
-        command: npm install command string
+        command: Scaffold command string
+        scaffold_type: "frontend" or "backend"
 
     Returns:
-        Set of package names
+        Tuple of (set of package names, matched package manager config or None)
     """
     import re
-    packages: set[str] = set()
-    # Match npm install <packages> pattern
-    match = re.search(r'npm install\s+(.+?)(?:&&|$)', command)
-    if match:
-        pkg_str = match.group(1).strip()
-        # Split by space, filter out flags (starting with -)
-        for pkg in pkg_str.split():
-            if not pkg.startswith('-') and pkg:
-                # Remove version specifier if present (e.g., package@1.0.0)
-                pkg_name = pkg.split('@')[0] if '@' in pkg and not pkg.startswith('@') else pkg
-                packages.add(pkg_name)
-    return packages
+    managers = _PACKAGE_MANAGERS.get(scaffold_type, [])
 
+    for manager in managers:
+        match = re.search(manager["pattern"], command)
+        if match:
+            packages: set[str] = set()
+            pkg_str = match.group(1).strip()
+            version_split = manager.get("version_split", "@")
 
-def _parse_pip_packages(command: str) -> set[str]:
-    """Extract package names from pip install command.
+            for pkg in pkg_str.split():
+                if not pkg.startswith('-') and pkg:
+                    # Handle version specifiers
+                    pkg_name = pkg
+                    for char in version_split:
+                        if char in pkg_name and not pkg_name.startswith('@'):
+                            pkg_name = pkg_name.split(char)[0]
+                    if pkg_name:
+                        packages.add(pkg_name)
 
-    Args:
-        command: pip install command string
+            return packages, manager
 
-    Returns:
-        Set of package names
-    """
-    import re
-    packages: set[str] = set()
-    # Match pip install <packages> pattern
-    match = re.search(r'pip install\s+(.+?)(?:&&|$)', command)
-    if match:
-        pkg_str = match.group(1).strip()
-        for pkg in pkg_str.split():
-            if not pkg.startswith('-') and pkg:
-                # Remove version specifier and extras
-                pkg_name = pkg.split('[')[0].split('==')[0].split('>=')[0].split('<=')[0]
-                packages.add(pkg_name)
-    return packages
+    return set(), None
 
 
 def _build_incremental_command(
@@ -646,41 +686,26 @@ def _build_incremental_command(
     Returns:
         Tuple of (command to execute or None, new packages to track)
     """
-    import re
+    new_packages, manager = _parse_packages_from_command(original_cmd, scaffold_type)
 
-    if scaffold_type == "frontend":
-        # Parse npm packages
-        new_packages = _parse_npm_packages(original_cmd)
-        packages_to_install = new_packages - installed_packages
+    if not manager:
+        # Unknown package manager, run original command
+        return original_cmd if not is_initialized else None, set()
 
-        if is_initialized:
-            # Project already exists, only install new packages
-            if packages_to_install:
-                install_cmd = f"cd frontend && npm install {' '.join(sorted(packages_to_install))}"
-                return install_cmd, new_packages
-            else:
-                return None, set()  # Nothing to do
+    packages_to_install = new_packages - installed_packages
+
+    if is_initialized:
+        # Project already exists, only install new packages
+        if packages_to_install:
+            install_cmd = manager["install_cmd"].format(
+                packages=' '.join(sorted(packages_to_install))
+            )
+            return install_cmd, new_packages
         else:
-            # First time: run full command
-            return original_cmd, new_packages
-
-    elif scaffold_type == "backend":
-        # Parse pip packages
-        new_packages = _parse_pip_packages(original_cmd)
-        packages_to_install = new_packages - installed_packages
-
-        if is_initialized:
-            # Project already exists, only install new packages
-            if packages_to_install:
-                install_cmd = f"pip install {' '.join(sorted(packages_to_install))}"
-                return install_cmd, new_packages
-            else:
-                return None, set()  # Nothing to do
-        else:
-            # First time: run full command
-            return original_cmd, new_packages
-
-    return original_cmd, set()
+            return None, set()  # Nothing to do
+    else:
+        # First time: run full command
+        return original_cmd, new_packages
 
 
 async def run_scaffold_commands(
