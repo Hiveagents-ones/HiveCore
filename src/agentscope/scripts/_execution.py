@@ -133,11 +133,155 @@ async def run_execution(
             "validation_errors": [],  # Track previous validation errors
             "validation_error_files": set(),  # Track files with validation errors
             "validated_files": set(),  # Track files that passed validation
+            "modified_files": set(),  # Track files modified by this requirement
+            "last_validation_score": 0.0,  # Track last validation score for regression
             "blueprint": None,
             "path": None,
         }
         for req in requirements
     }
+
+    # Track which files are shared across requirements (for regression detection)
+    file_to_requirements: dict[str, set[str]] = {}
+
+    def _track_modified_files(rid: str, files: list[str]) -> None:
+        """Track files modified by a requirement for regression detection.
+
+        Args:
+            rid: Requirement ID
+            files: List of file paths modified
+        """
+        state = req_state.get(rid)
+        if not state:
+            return
+
+        for fpath in files:
+            # Normalize path
+            normalized = fpath.lstrip("./")
+            state["modified_files"].add(normalized)
+
+            # Update file->requirements mapping
+            if normalized not in file_to_requirements:
+                file_to_requirements[normalized] = set()
+            file_to_requirements[normalized].add(rid)
+
+    def _get_affected_requirements(rid: str, modified_files: set[str]) -> set[str]:
+        """Find requirements that might be affected by modified files.
+
+        Args:
+            rid: Current requirement ID (to exclude)
+            modified_files: Files modified in this round
+
+        Returns:
+            Set of requirement IDs that may need regression check
+        """
+        affected: set[str] = set()
+        for fpath in modified_files:
+            normalized = fpath.lstrip("./")
+            if normalized in file_to_requirements:
+                affected.update(file_to_requirements[normalized])
+        # Exclude current requirement
+        affected.discard(rid)
+        return affected
+
+    async def _perform_regression_check(
+        affected_rids: set[str],
+        workspace_dir: Path,
+        round_idx: int,
+    ) -> dict[str, bool]:
+        """Perform regression validation on affected requirements.
+
+        Args:
+            affected_rids: Requirement IDs to check
+            workspace_dir: Workspace directory
+            round_idx: Current round index
+
+        Returns:
+            Dict mapping requirement ID to regression pass status
+        """
+        regression_results: dict[str, bool] = {}
+
+        for rid in affected_rids:
+            state = req_state.get(rid)
+            if not state:
+                continue
+
+            # Only check requirements that previously passed
+            passed_ids = state.get("passed", set())
+            if not passed_ids:
+                continue
+
+            # Get criteria for this requirement
+            criteria = criteria_for_requirement(spec, rid)
+            if not criteria:
+                continue
+
+            # Check if all criteria were passed
+            all_criteria_ids = {c.get("id", f"{rid}.{i+1}") for i, c in enumerate(criteria)}
+            if not all_criteria_ids.issubset(passed_ids):
+                # Not fully passed, skip regression check
+                continue
+
+            observer.on_regression_check_start(rid)
+
+            # Read current workspace files for validation
+            synced_files: dict[str, str] = {}
+            for fpath in workspace_dir.rglob("*"):
+                if fpath.is_file() and not fpath.name.startswith("."):
+                    try:
+                        rel_path = str(fpath.relative_to(workspace_dir))
+                        if "node_modules" not in rel_path and "__pycache__" not in rel_path:
+                            synced_files[rel_path] = fpath.read_text(encoding="utf-8")
+                    except Exception:
+                        pass
+
+            if not synced_files:
+                regression_results[rid] = True
+                continue
+
+            # Get requirement info
+            req_info = next((r for r in requirements if r["id"] == rid), None)
+            if not req_info:
+                regression_results[rid] = True
+                continue
+
+            # Run code validation
+            req_summary = req_info.get("summary", req_info.get("description", ""))[:200]
+            tech_stack_info = project_memory.get_tech_stack_info() if project_memory else ""
+
+            validation_result = await layered_code_validation(
+                runtime_workspace=runtime_workspace if use_runtime_mode else None,
+                llm=llm,
+                files=synced_files,
+                requirement_summary=req_summary,
+                tech_stack_info=tech_stack_info,
+                verbose=verbose,
+            )
+
+            # Check if regression occurred
+            prev_score = state.get("last_validation_score", 1.0)
+            current_score = validation_result.score
+            is_valid = validation_result.is_valid and current_score >= 0.6
+
+            # Regression = previously valid but now invalid, or significant score drop
+            score_drop = prev_score - current_score
+            has_regression = not is_valid or score_drop > 0.2
+
+            if has_regression:
+                observer.on_regression_detected(rid, prev_score, current_score)
+                # Clear passed status to force re-implementation
+                state["passed"] = set()
+                state["validation_errors"] = validation_result.errors[:15]
+                state["feedback"] = f"回归检测: 代码修改导致验证分数从 {prev_score:.2f} 降至 {current_score:.2f}"
+                feedback_map[rid] = state["feedback"]
+                regression_results[rid] = False
+            else:
+                observer.on_regression_check_pass(rid, current_score)
+                # Update validation score
+                state["last_validation_score"] = current_score
+                regression_results[rid] = True
+
+        return regression_results
 
     # Project context for file tracking and incremental updates
     from agentscope.ones import create_project_context, EnhancedProjectContext
@@ -450,6 +594,8 @@ async def run_execution(
                         if file_path:
                             written_files.append(file_path)
                             observer.on_file_written(rid, file_path)
+                    # Track modified files for regression detection
+                    _track_modified_files(rid, written_files)
 
                     # Code validation on existing files
                     if written_files and not skip_code_validation:
@@ -518,6 +664,8 @@ async def run_execution(
                         if result.get("success"):
                             written_files.append(result["path"])
                             observer.on_file_written(rid, result["path"], "Runtime")
+                    # Track modified files for regression detection
+                    _track_modified_files(rid, written_files)
 
                     # Execute setup commands
                     setup_commands = impl.get("setup_commands", [])
@@ -604,6 +752,8 @@ async def run_execution(
                         written_files.append(file_path)
                         local_files_dict[file_path] = str(file_content)
                         observer.on_file_written(rid, file_path)
+                    # Track modified files for regression detection
+                    _track_modified_files(rid, written_files)
 
                     # Code validation
                     if local_files_dict and not skip_code_validation:
@@ -738,6 +888,9 @@ async def run_execution(
                 feedback_map[rid] = ""
                 state["feedback"] = ""
                 state["validation_errors"] = []  # Clear errors on success
+                # Store validation score for regression detection
+                if validation_result is not None:
+                    state["last_validation_score"] = validation_result.score
             else:
                 feedback_parts = []
                 if not static_passed:
@@ -775,6 +928,48 @@ async def run_execution(
             observer.on_requirement_complete(rid, overall_passed, scores)
 
         rounds.append(round_entry)
+
+        # Regression validation: check if modifications affected previously passed requirements
+        if workspace_dir and round_idx > 1:
+            # Collect all files modified in this round
+            round_modified_files: set[str] = set()
+            for result in round_entry.get("results", []):
+                rid = result.get("requirement_id", "")
+                if rid in req_state:
+                    round_modified_files.update(req_state[rid].get("modified_files", set()))
+
+            # Find requirements that may be affected
+            affected_rids: set[str] = set()
+            for fpath in round_modified_files:
+                normalized = fpath.lstrip("./")
+                if normalized in file_to_requirements:
+                    # Get requirements that previously modified this file
+                    for prev_rid in file_to_requirements[normalized]:
+                        # Only check if all criteria passed (fully passed requirements)
+                        state = req_state.get(prev_rid)
+                        if state and state.get("passed"):
+                            criteria = criteria_for_requirement(spec, prev_rid)
+                            all_criteria_ids = {c.get("id", f"{prev_rid}.{i+1}") for i, c in enumerate(criteria)}
+                            if all_criteria_ids and all_criteria_ids.issubset(state["passed"]):
+                                affected_rids.add(prev_rid)
+
+            # Exclude requirements that were just processed this round
+            current_round_rids = {r.get("requirement_id") for r in round_entry.get("results", [])}
+            affected_rids -= current_round_rids
+
+            if affected_rids:
+                observer.on_regression_check_batch_start(len(affected_rids), list(affected_rids))
+                regression_results = await _perform_regression_check(
+                    affected_rids, workspace_dir, round_idx
+                )
+                # Update pass flags if regressions were found
+                regressed_rids = [rid for rid, passed in regression_results.items() if not passed]
+                if regressed_rids:
+                    observer.on_regression_batch_complete(len(regressed_rids), regressed_rids)
+                    # Mark these as failed in requirement_pass_flags
+                    for idx, req in enumerate(requirements):
+                        if req["id"] in regressed_rids:
+                            requirement_pass_flags[idx] = False
 
         # Report round completion
         passed_reqs = [requirements[idx]["id"] for idx, ok in enumerate(requirement_pass_flags) if ok]

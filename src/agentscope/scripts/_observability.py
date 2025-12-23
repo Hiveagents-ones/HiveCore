@@ -1255,6 +1255,66 @@ class ExecutionObserver:
         self.ctx.logger.debug(f"[{req_id}]   - {error}")
 
     # -------------------------------------------------------------------------
+    # Regression Detection Events
+    # -------------------------------------------------------------------------
+    def on_regression_check_batch_start(self, count: int, rids: list[str]) -> None:
+        """Called when regression check batch starts.
+
+        Args:
+            count: Number of requirements to check
+            rids: List of requirement IDs to check
+        """
+        self.ctx.logger.info(f"\n[REGRESSION] 检测回归影响，共 {count} 个已通过需求待验证")
+        for rid in rids[:5]:
+            self.ctx.logger.debug(f"[REGRESSION]   - {rid}")
+        if len(rids) > 5:
+            self.ctx.logger.debug(f"[REGRESSION]   ... 及其他 {len(rids) - 5} 个需求")
+
+    def on_regression_check_start(self, req_id: str) -> None:
+        """Called when regression check starts for a requirement.
+
+        Args:
+            req_id: Requirement ID being checked
+        """
+        self.ctx.logger.info(f"[{req_id}] 🔄 回归验证...")
+
+    def on_regression_detected(self, req_id: str, prev_score: float, current_score: float) -> None:
+        """Called when regression is detected.
+
+        Args:
+            req_id: Requirement ID with regression
+            prev_score: Previous validation score
+            current_score: Current validation score
+        """
+        self.ctx.logger.warn(
+            f"[{req_id}] ⚠️ 检测到回归! 验证分数从 {prev_score:.0%} 降至 {current_score:.0%}"
+        )
+        self.ctx.logger.info(f"[{req_id}] 需要在下一轮重新实现")
+
+    def on_regression_check_pass(self, req_id: str, score: float) -> None:
+        """Called when regression check passes.
+
+        Args:
+            req_id: Requirement ID that passed
+            score: Current validation score
+        """
+        self.ctx.logger.info(f"[{req_id}] ✓ 回归验证通过 (score={score:.0%})")
+
+    def on_regression_batch_complete(self, regressed_count: int, regressed_rids: list[str]) -> None:
+        """Called when regression check batch completes.
+
+        Args:
+            regressed_count: Number of regressions detected
+            regressed_rids: List of requirement IDs with regression
+        """
+        if regressed_count > 0:
+            self.ctx.logger.warn(
+                f"[REGRESSION] ⚠️ 发现 {regressed_count} 个回归需求: {', '.join(regressed_rids)}"
+            )
+        else:
+            self.ctx.logger.info("[REGRESSION] ✓ 无回归问题")
+
+    # -------------------------------------------------------------------------
     # Finalization Events
     # -------------------------------------------------------------------------
     def on_finalization_start(self) -> None:
