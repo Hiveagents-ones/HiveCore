@@ -1122,6 +1122,15 @@ class ExecutionObserver:
         """
         self.ctx.logger.info(f"[{req_id}] ⚠ 脚手架初始化失败，回退到 stepwise 模式")
 
+    def on_scaffold_skip(self, req_id: str, reason: str) -> None:
+        """Called when scaffold initialization is skipped (already initialized).
+
+        Args:
+            req_id: Requirement ID
+            reason: Reason for skipping
+        """
+        self.ctx.logger.debug(f"[{req_id}] 跳过脚手架初始化: {reason}")
+
     def on_scaffold_sync(self, req_id: str, synced: int, source_files: int) -> None:
         """Called when scaffold files are synced.
 
