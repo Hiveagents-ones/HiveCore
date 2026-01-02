@@ -82,6 +82,43 @@ class RoundFeedback:
             else:
                 self.suggestions.append(msg)
 
+    def add_acceptance_result(self, acceptance_result: "Any") -> None:
+        """Add acceptance validation result to feedback.
+
+        This integrates AcceptanceAgent's validation results (including
+        dependency, compile, startup, and function checks) into the
+        feedback that will be passed to agents in the next round.
+
+        Args:
+            acceptance_result: AcceptanceResult from AcceptanceAgent.
+        """
+        if acceptance_result is None:
+            return
+
+        # Add failed checks to critical issues
+        for check in getattr(acceptance_result, "checks", []):
+            if not check.passed:
+                phase = getattr(check, "phase", "unknown")
+                is_critical = getattr(check, "critical", False)
+                error_msg = check.error or "检查失败"
+
+                issue_msg = f"[{phase}] {check.name}: {error_msg}"
+
+                if is_critical:
+                    self.critical_issues.append(f"【关键】{issue_msg}")
+                else:
+                    self.warnings.append(issue_msg)
+
+        # Add recommendations as suggestions
+        for rec in getattr(acceptance_result, "recommendations", []):
+            self.suggestions.append(f"建议: {rec}")
+
+        # Add summary if failed
+        if not getattr(acceptance_result, "passed", True):
+            summary = getattr(acceptance_result, "summary", "验收未通过")
+            if summary and summary not in self.critical_issues:
+                self.critical_issues.insert(0, f"【验收失败】{summary}")
+
     def build_feedback_prompt(self, max_issues: int = 10) -> str:
         """Build a feedback prompt for the next generation round.
 

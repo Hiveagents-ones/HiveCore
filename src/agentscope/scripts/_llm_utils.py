@@ -70,15 +70,11 @@ def extract_text_from_response(resp: Any) -> str:
     return str(resp)
 
 
-def load_siliconflow_env() -> dict[str, str | None]:
-    """Load SiliconFlow credentials from environment variables.
+def _load_env_file() -> None:
+    """Load .env file if present.
 
-    Automatically loads .env file if present.
-
-    Returns:
-        dict: Dictionary with api_key, base_url, and model.
+    Searches common locations and loads environment variables.
     """
-    # Try to load .env file
     from pathlib import Path
     env_candidates = [
         Path.cwd() / ".env",
@@ -101,63 +97,234 @@ def load_siliconflow_env() -> dict[str, str | None]:
             except Exception:
                 pass
 
+
+def load_zhipu_env() -> dict[str, str | None]:
+    """Load Zhipu AI credentials from environment variables.
+
+    Returns:
+        dict: Dictionary with api_key, base_url, and model.
+    """
+    _load_env_file()
+    return {
+        "api_key": os.getenv("ZHIPU_API_KEY"),
+        "base_url": os.getenv("ZHIPU_BASE_URL", "https://open.bigmodel.cn/api/paas/v4"),
+        "model": os.getenv("ZHIPU_MODEL", "glm-4-plus"),
+    }
+
+
+def load_zhipu_anthropic_env() -> dict[str, str | None]:
+    """Load Zhipu AI Anthropic-compatible credentials from environment variables.
+
+    Returns:
+        dict: Dictionary with api_key, base_url, and model.
+    """
+    _load_env_file()
+    return {
+        "api_key": os.getenv("ZHIPU_API_KEY"),
+        "base_url": os.getenv("ZHIPU_ANTHROPIC_BASE_URL", "https://open.bigmodel.cn/api/anthropic"),
+        "model": os.getenv("ZHIPU_ANTHROPIC_MODEL", "GLM-4.7"),
+    }
+
+
+def load_siliconflow_env() -> dict[str, str | None]:
+    """Load SiliconFlow credentials from environment variables.
+
+    Automatically loads .env file if present.
+
+    Returns:
+        dict: Dictionary with api_key, base_url, and model.
+    """
+    _load_env_file()
     return {
         "api_key": os.getenv("SILICONFLOW_API_KEY"),
         "base_url": os.getenv("SILICONFLOW_BASE_URL", "https://api.siliconflow.cn/v1"),
         "model": os.getenv("SILICONFLOW_MODEL", "Qwen/Qwen2.5-72B-Instruct"),
+        # API format: "openai" (default) or "anthropic" (for GLM-4.7 tool_use support)
+        "api_format": os.getenv("SILICONFLOW_API_FORMAT", "auto"),
     }
 
 
+def get_llm_provider() -> str:
+    """Get the configured LLM provider.
+
+    Returns:
+        str: Provider name ('zhipu-anthropic', 'zhipu', 'siliconflow', or 'auto')
+    """
+    _load_env_file()
+    return os.getenv("LLM_PROVIDER", "auto")
+
+
+def _should_use_anthropic_format(model_name: str, api_format: str) -> bool:
+    """Determine if Anthropic API format should be used.
+
+    Args:
+        model_name: The model name
+        api_format: User-specified format ("auto", "anthropic", or "openai")
+
+    Returns:
+        bool: True if Anthropic format should be used
+    """
+    if api_format == "anthropic":
+        return True
+    if api_format == "openai":
+        return False
+    # Auto-detect based on model name
+    # GLM-4.x models support Anthropic format with native tool_use
+    anthropic_models = ["GLM-4.7", "GLM-4.6", "GLM-4.5"]
+    return any(m in model_name for m in anthropic_models)
+
+
 def initialize_llm(
-    provider: str,
-    silicon_creds: dict[str, str | None],
-    *,
-    ollama_model: str = "qwen3:30b",
-    ollama_host: str = "http://localhost:11434",
+    provider: str | None = None,
+    silicon_creds: dict[str, str | None] | None = None,
+    zhipu_creds: dict[str, str | None] | None = None,
 ) -> tuple[Any, str]:
     """Initialize LLM model based on provider configuration.
 
     Args:
-        provider: Provider name ('auto', 'siliconflow', 'ollama')
-        silicon_creds: SiliconFlow credentials dict
-        ollama_model: Ollama model name
-        ollama_host: Ollama server URL
+        provider: Provider name ('auto', 'zhipu-anthropic', 'zhipu', 'siliconflow').
+            If None or 'auto', uses LLM_PROVIDER env var.
+        silicon_creds: SiliconFlow credentials dict (optional)
+        zhipu_creds: Zhipu AI credentials dict (optional)
 
     Returns:
         tuple: (llm_instance, provider_name_used)
     """
-    from agentscope.model import OpenAIChatModel
+    # Determine provider
+    if provider is None or provider == "auto":
+        provider = get_llm_provider()
+        if provider == "auto":
+            # Auto-detect: prefer zhipu-anthropic if configured
+            zhipu_creds = load_zhipu_anthropic_env()
+            if zhipu_creds.get("api_key"):
+                provider = "zhipu-anthropic"
+            else:
+                provider = "siliconflow"
 
-    if provider == "auto":
-        if silicon_creds.get("api_key"):
-            provider = "siliconflow"
-        else:
-            provider = "ollama"
+    from ._observability import get_logger
+    logger = get_logger()
 
-    if provider == "siliconflow":
+    if provider == "zhipu-anthropic":
+        # Use Zhipu AI Anthropic-compatible API (native tool_use support)
+        zhipu_creds = load_zhipu_anthropic_env()
+
+        if not zhipu_creds.get("api_key"):
+            raise ValueError(
+                "Zhipu API key not found. Please set ZHIPU_API_KEY environment variable."
+            )
+
+        model_name = zhipu_creds.get("model") or "GLM-4.7"
+        api_key = zhipu_creds.get("api_key") or ""
+        base_url = zhipu_creds.get("base_url") or "https://open.bigmodel.cn/api/anthropic"
+
+        logger.info(f"[LLM] Using Zhipu AI Anthropic-compatible API: {model_name}")
+
+        from agentscope.model import AnthropicChatModel
+        # Zhipu uses Bearer token auth instead of x-api-key
+        # Pass api_key as None and use default_headers for Bearer auth
         return (
-            OpenAIChatModel(
-                model_name=silicon_creds.get("model") or "Qwen/Qwen2.5-72B-Instruct",
-                api_key=silicon_creds.get("api_key") or "",
+            AnthropicChatModel(
+                model_name=model_name,
+                api_key=api_key,  # Anthropic SDK will use this as x-api-key
+                max_tokens=8192,
                 stream=False,
                 client_args={
-                    "base_url": silicon_creds.get("base_url") or "https://api.siliconflow.cn/v1",
+                    "base_url": base_url,
+                    # Override auth header with Bearer token format
+                    "default_headers": {
+                        "Authorization": f"Bearer {api_key}",
+                    },
                 },
             ),
-            "siliconflow",
+            "zhipu-anthropic",
         )
+
+    elif provider == "zhipu":
+        # Use Zhipu AI OpenAI-compatible API (has issues with tool_result)
+        zhipu_creds = zhipu_creds or load_zhipu_env()
+
+        if not zhipu_creds.get("api_key"):
+            raise ValueError(
+                "Zhipu API key not found. Please set ZHIPU_API_KEY environment variable."
+            )
+
+        model_name = zhipu_creds.get("model") or "glm-4-plus"
+        api_key = zhipu_creds.get("api_key") or ""
+        base_url = zhipu_creds.get("base_url") or "https://open.bigmodel.cn/api/paas/v4"
+
+        logger.info(f"[LLM] Using Zhipu AI OpenAI-compatible API: {model_name}")
+
+        from agentscope.model import OpenAIChatModel
+        return (
+            OpenAIChatModel(
+                model_name=model_name,
+                api_key=api_key,
+                stream=False,
+                client_args={
+                    "base_url": base_url,
+                },
+            ),
+            "zhipu",
+        )
+
     else:
-        return (
-            OpenAIChatModel(
-                model_name=ollama_model,
-                api_key="ollama",
-                stream=False,
-                client_args={
-                    "base_url": f"{ollama_host}/v1",
-                },
-            ),
-            "ollama",
-        )
+        # SiliconFlow provider
+        silicon_creds = silicon_creds or load_siliconflow_env()
+
+        if not silicon_creds.get("api_key"):
+            raise ValueError(
+                "SiliconFlow API key not found. Please set SILICONFLOW_API_KEY environment variable."
+            )
+
+        model_name = silicon_creds.get("model") or "Qwen/Qwen2.5-72B-Instruct"
+        api_key = silicon_creds.get("api_key") or ""
+        base_url = silicon_creds.get("base_url") or "https://api.siliconflow.cn/v1"
+        api_format = silicon_creds.get("api_format") or "auto"
+
+        use_anthropic = _should_use_anthropic_format(model_name, api_format)
+
+        if use_anthropic:
+            # Use Anthropic format for GLM-4.x models (supports native tool_use)
+            from agentscope.model import AnthropicChatModel
+
+            logger.info(
+                f"[LLM] Using SiliconFlow Anthropic format: {model_name}"
+            )
+
+            # Anthropic SDK automatically appends /v1/messages to base_url
+            anthropic_base_url = base_url.rstrip("/")
+            if anthropic_base_url.endswith("/v1"):
+                anthropic_base_url = anthropic_base_url[:-3]
+
+            return (
+                AnthropicChatModel(
+                    model_name=model_name,
+                    api_key=api_key,
+                    max_tokens=8192,
+                    stream=False,
+                    client_args={
+                        "base_url": anthropic_base_url,
+                    },
+                ),
+                "siliconflow-anthropic",
+            )
+        else:
+            # Use OpenAI format (default)
+            from agentscope.model import OpenAIChatModel
+
+            logger.info(f"[LLM] Using SiliconFlow OpenAI format: {model_name}")
+
+            return (
+                OpenAIChatModel(
+                    model_name=model_name,
+                    api_key=api_key,
+                    stream=False,
+                    client_args={
+                        "base_url": base_url,
+                    },
+                ),
+                "siliconflow",
+            )
 
 
 async def call_llm_raw(
@@ -395,7 +562,10 @@ async def call_llm_json(
 
 
 __all__ = [
+    "load_zhipu_env",
+    "load_zhipu_anthropic_env",
     "load_siliconflow_env",
+    "get_llm_provider",
     "initialize_llm",
     "call_llm_raw",
     "call_llm_json",
@@ -403,4 +573,5 @@ __all__ = [
     "repair_truncated_json",
     "parse_json_from_text",
     "extract_text_from_response",
+    "_should_use_anthropic_format",
 ]

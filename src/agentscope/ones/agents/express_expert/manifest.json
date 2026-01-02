@@ -49,6 +49,105 @@
     "file_write",
     "shell_exec"
   ],
+  "dependency_config": {
+    "dependency_file": "package.json",
+    "install_command": "npm install",
+    "add_command": "npm install {package}",
+    "file_format": "npm-package",
+    "lock_file": "package-lock.json",
+    "stdlib_modules": [
+      "fs", "path", "http", "https", "url", "util", "events",
+      "stream", "buffer", "crypto", "os", "child_process", "cluster",
+      "net", "dns", "tls", "dgram", "readline", "querystring"
+    ],
+    "import_patterns": [
+      "require\\(['\"]([^'\"]+)['\"]\\)",
+      "from\\s+['\"]([^'\"]+)['\"]",
+      "import\\s+.*\\s+from\\s+['\"]([^'\"]+)['\"]"
+    ]
+  },
+  "validation_config": {
+    "compile_commands": [
+      "node --check {file}"
+    ],
+    "linter_commands": [
+      "npx eslint {file}"
+    ],
+    "startup_command": "node src/index.js",
+    "health_endpoint": "http://localhost:3000/health",
+    "test_command": "npm test"
+  },
+  "repair_config": {
+    "error_patterns": {
+      "Cannot find module '([^']+)'": "模块 $1 未安装。运行 npm install $1 添加依赖。",
+      "Error: listen EADDRINUSE.*:(\\d+)": "端口 $1 被占用。更换端口或终止占用该端口的进程。",
+      "SyntaxError: Unexpected token": "语法错误。检查 JavaScript 语法，特别是括号、逗号、分号。",
+      "TypeError: (\\w+) is not a function": "$1 不是函数。检查导出/导入是否正确，或对象属性访问是否正确。",
+      "ReferenceError: (\\w+) is not defined": "$1 未定义。检查变量声明或导入语句。",
+      "Error: ENOENT.*'([^']+)'": "文件 $1 不存在。检查文件路径是否正确。",
+      "MongoError": "MongoDB 连接或查询错误。检查连接字符串和数据库状态。",
+      "SequelizeConnectionError": "Sequelize 数据库连接错误。检查数据库配置和网络连接。",
+      "JsonWebTokenError": "JWT 错误。检查 token 格式和密钥配置。",
+      "UnhandledPromiseRejectionWarning": "未处理的 Promise 拒绝。添加 .catch() 或 try/catch 处理异步错误。"
+    },
+    "sync_files": [
+      "package.json",
+      "src/app.js",
+      "src/index.js",
+      ".env"
+    ],
+    "repair_guidelines": [
+      "添加新依赖后需运行 npm install",
+      "确保所有异步操作都有错误处理",
+      "中间件顺序很重要：先配置通用中间件，再配置路由",
+      "错误处理中间件必须放在所有路由之后",
+      "使用 dotenv 加载环境变量时确保 .env 文件存在"
+    ],
+    "common_fixes": {
+      "module_not_found": "安装缺失的 npm 包:\n```bash\nnpm install package-name\n```",
+      "async_error": "正确处理异步错误:\n```javascript\napp.get('/route', async (req, res, next) => {\n  try {\n    const result = await asyncOperation();\n    res.json(result);\n  } catch (error) {\n    next(error);\n  }\n});\n```",
+      "error_middleware": "添加错误处理中间件:\n```javascript\napp.use((err, req, res, next) => {\n  console.error(err.stack);\n  res.status(500).json({ error: err.message });\n});\n```"
+    }
+  },
+  "blueprint_config": {
+    "function_extraction_prompt": "基于 Express.js 框架，为每个 API 端点生成对应的路由处理函数、控制器、服务层和数据模型。",
+    "required_patterns": {
+      "crud": [
+        "get{Entity}List",
+        "get{Entity}ById",
+        "create{Entity}",
+        "update{Entity}",
+        "delete{Entity}"
+      ],
+      "auth": [
+        "login",
+        "logout",
+        "register",
+        "getCurrentUser",
+        "refreshToken"
+      ],
+      "middleware": [
+        "authMiddleware",
+        "validateRequest",
+        "errorHandler"
+      ]
+    },
+    "file_patterns": {
+      "get": "src/controllers/{entity}Controller.js",
+      "create": "src/controllers/{entity}Controller.js",
+      "update": "src/controllers/{entity}Controller.js",
+      "delete": "src/controllers/{entity}Controller.js",
+      "login": "src/controllers/authController.js",
+      "Middleware": "src/middleware/{name}.js"
+    },
+    "naming_conventions": {
+      "route_file": "src/routes/{entity}.js",
+      "controller_file": "src/controllers/{entity}Controller.js",
+      "service_file": "src/services/{entity}Service.js",
+      "model_file": "src/models/{Entity}.js",
+      "middleware_file": "src/middleware/{name}.js"
+    }
+  },
   "metadata": {
     "framework": "express",
     "category": "backend"

@@ -16,11 +16,65 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, TYPE_CHECKING
 
 from .._logging import logger
+
+
+def _log_progress(
+    msg: str,
+    *,
+    level: str = "info",
+    hub: "Any | None" = None,
+    event_type: str | None = None,
+    metadata: dict | None = None,
+    project_id: str | None = None,
+) -> None:
+    """Log progress with immediate flush for observability.
+
+    Args:
+        msg: Message to log.
+        level: Log level (info, warning, error).
+        hub: Optional ObservabilityHub instance for timeline tracking.
+        event_type: Optional timeline event type for ObservabilityHub.
+        metadata: Optional metadata for timeline event.
+        project_id: Optional project ID for timeline event.
+    """
+    from datetime import datetime
+
+    timestamp = time.strftime("%H:%M:%S")
+    prefix = "[AcceptanceAgent]"
+    formatted = f"{timestamp} | {prefix} {msg}"
+
+    # Print with flush for immediate visibility
+    print(formatted, flush=True)
+
+    # Also log via logger for file logging
+    if level == "warning":
+        logger.warning(msg)
+    elif level == "error":
+        logger.error(msg)
+    else:
+        logger.info(msg)
+
+    # Record to ObservabilityHub if provided
+    if hub is not None and event_type is not None:
+        try:
+            from ..observability._types import TimelineEvent
+
+            event = TimelineEvent(
+                timestamp=datetime.now(),
+                event_type=event_type,  # type: ignore[arg-type]
+                project_id=project_id,
+                agent_id="acceptance_agent",
+                metadata={"message": msg, **(metadata or {})},
+            )
+            hub.record_timeline_event(event)
+        except Exception:
+            pass  # Don't fail on observability errors
 
 if TYPE_CHECKING:
     from ..model import ChatModelBase
@@ -74,6 +128,8 @@ class ValidationCheck:
     output: str = ""
     error: str | None = None
     screenshot: str | None = None  # Path to screenshot if applicable
+    critical: bool = False  # If True, failure stops all subsequent checks
+    phase: str = "function"  # dependency/compile/startup/function
 
 
 @dataclass
@@ -104,6 +160,8 @@ class AcceptanceResult:
                     "name": c.name,
                     "description": c.description,
                     "environment": c.environment.value,
+                    "phase": c.phase,
+                    "critical": c.critical,
                     "passed": c.passed,
                     "output": c.output[:500] if c.output else "",
                     "error": c.error,
@@ -135,10 +193,41 @@ VALIDATION_STRATEGY_PROMPT = '''你是一个智能验收专家。根据以下信
 {available_environments}
 
 ## 任务
-分析产物和交付标准，生成验收策略。你需要：
-1. 根据产物类型选择合适的验收环境
-2. 设计验收步骤来验证是否满足交付标准
-3. 不要假设任何特定框架 - 根据实际文件判断
+分析产物和交付标准，生成验收策略。
+
+### 【强制】验收必须按顺序覆盖以下阶段：
+
+**阶段 1：依赖验证**（required=true, critical=true）
+- 根据项目文件（如 requirements.txt、package.json、go.mod、Cargo.toml 等）验证依赖安装
+- 必须执行实际的安装命令并检查输出是否有错误
+- 检查安装命令的 exit code 和输出中是否包含 ERROR/error/failed 等关键词
+- 此阶段失败意味着依赖不完整，代码无法运行
+
+**阶段 2：编译/导入验证**（required=true, critical=true）
+- 验证代码可以成功编译或导入，【禁止】只检查文件是否存在
+- 根据项目类型执行相应的验证命令，例如：
+  - Python 项目：执行 `python -c "from <main_module> import <entry>"` 验证导入无错误
+  - TypeScript/前端项目：执行 `npm run build` 或 `npx tsc --noEmit` 验证编译
+  - Go 项目：执行 `go build ./...` 验证编译
+  - Rust 项目：执行 `cargo check` 验证编译
+  - Java 项目：执行 `mvn compile` 或 `gradle build` 验证编译
+- 此阶段失败意味着代码存在语法错误或类型错误，必须标记为 critical
+
+**阶段 3：启动验证**（required=true, critical=true）
+- 验证服务可以成功启动并保持运行
+- 【禁止】只检查启动命令是否执行成功，必须验证服务确实在运行
+- 验证方式：健康检查端点、端口监听检测、进程状态检查、日志无致命错误
+- 对于后台服务，启动后等待数秒再验证服务状态
+
+**阶段 4：功能验证**（根据交付标准设计）
+- 验证业务功能是否满足用户需求和交付标准
+- 使用 API 测试、浏览器测试等方式验证具体功能
+
+### 【重要】验收规则：
+- 阶段 1-3 的检查必须设置 "critical": true，任一失败则整体验收失败
+- 不能跳过阶段 1-3 直接进行功能验证
+- 每个阶段至少包含一个验证检查
+- 根据实际文件判断项目类型，不要假设任何特定框架
 
 输出JSON格式：
 ```json
@@ -156,6 +245,7 @@ VALIDATION_STRATEGY_PROMPT = '''你是一个智能验收专家。根据以下信
     {{
       "name": "检查名称",
       "description": "检查什么，为什么重要",
+      "phase": "dependency/compile/startup/function",
       "acceptance_criterion": "对应哪条交付标准",
       "environment": "cli/browser/api/gui/mobile/visual",
       "action": {{
@@ -163,7 +253,8 @@ VALIDATION_STRATEGY_PROMPT = '''你是一个智能验收专家。根据以下信
         ... 动作参数
       }},
       "expected_result": "期望结果描述",
-      "required": true/false
+      "required": true,
+      "critical": true/false
     }}
   ],
   "reasoning": "为什么选择这个验收策略"
@@ -234,6 +325,12 @@ VALIDATION_STRATEGY_PROMPT = '''你是一个智能验收专家。根据以下信
 - 验收步骤要能验证交付标准是否满足
 - 【重要】浏览器环境使用无障碍树，不支持 CSS 选择器！请用 check_text 和 check_title 验证
 - 【重要】验证页面内容时，使用 check_text 检查具体文本是否存在
+
+### 【critical 检查规则】
+- phase 为 dependency/compile/startup 的检查必须设置 "critical": true
+- critical=true 的检查失败会导致整体验收立即失败，不会继续后续检查
+- 必须先通过依赖、编译、启动验证，再进行功能验证
+- 验收策略必须包含至少：1个依赖检查 + 1个编译/导入检查 + 1个启动检查
 '''
 
 # Prompt for analyzing validation results
@@ -253,6 +350,12 @@ RESULT_ANALYSIS_PROMPT = '''你是一个验收专家。根据以下验收结果�
 1. 每条交付标准是否满足
 2. 总体是否通过验收
 3. 具体问题和改进建议
+
+### 【重要】验收规则
+- 验收结果包含 phase 字段（dependency/compile/startup/function）和 critical 字段
+- 【强制】如果任何 critical=true 的检查失败，整体验收必须为 "failed"，score=0
+- 【强制】dependency/compile/startup 阶段的失败不能被忽略，这些是代码可运行的前提
+- 只有当所有 critical 检查都通过后，才根据功能验证结果判断最终状态
 
 输出JSON格式：
 ```json
@@ -311,6 +414,7 @@ class AcceptanceAgent:
         playwright_mcp: "Any | None" = None,
         http_port: int | None = None,
         default_timeout: int = 120,
+        project_id: str | None = None,
     ) -> None:
         """Initialize acceptance agent.
 
@@ -323,6 +427,7 @@ class AcceptanceAgent:
                 Can be StatefulClientBase or BrowserSandboxManager.
             http_port: HTTP server port for serving web content to browser.
             default_timeout: Default timeout for validation actions.
+            project_id: Optional project ID for observability tracking.
         """
         self._model = model
         self._orchestrator = sandbox_orchestrator
@@ -330,6 +435,39 @@ class AcceptanceAgent:
         self._playwright_mcp = playwright_mcp
         self._http_port = http_port
         self._default_timeout = default_timeout
+        self._project_id = project_id
+
+        # Initialize ObservabilityHub for timeline tracking
+        try:
+            from ..observability import ObservabilityHub
+            self._hub = ObservabilityHub()
+        except Exception:
+            self._hub = None
+
+    def _emit_event(
+        self,
+        event_type: str,
+        message: str,
+        *,
+        level: str = "info",
+        metadata: dict | None = None,
+    ) -> None:
+        """Emit a progress event to console and ObservabilityHub.
+
+        Args:
+            event_type: Type of event (acceptance_start/end/step/check).
+            message: Human-readable message.
+            level: Log level (info, warning, error).
+            metadata: Additional event metadata.
+        """
+        _log_progress(
+            message,
+            level=level,
+            hub=self._hub,
+            event_type=event_type,
+            metadata=metadata,
+            project_id=self._project_id,
+        )
 
     async def validate(
         self,
@@ -354,9 +492,31 @@ class AcceptanceAgent:
         Returns:
             AcceptanceResult with validation status and details.
         """
+        validation_start = time.time()
+        self._emit_event("acceptance_start", "=" * 60)
+        self._emit_event(
+            "acceptance_start",
+            "🔍 开始验收流程",
+            metadata={"artifact_type": artifact_type, "workspace": workspace_dir},
+        )
+        self._emit_event("acceptance_step", f"   产物类型: {artifact_type}")
+        self._emit_event("acceptance_step", f"   工作区: {workspace_dir}")
+        if acceptance_criteria:
+            self._emit_event(
+                "acceptance_step",
+                f"   验收标准: {len(acceptance_criteria)} 条",
+                metadata={"criteria_count": len(acceptance_criteria)},
+            )
+
         # Step 1: Get file list if not provided
         if file_list is None:
+            self._emit_event("acceptance_step", "📁 步骤1: 扫描工作区文件...")
             file_list = await self._list_workspace_files(workspace_dir)
+            self._emit_event(
+                "acceptance_step",
+                f"   找到 {len(file_list)} 个文件",
+                metadata={"file_count": len(file_list)},
+            )
 
         if not file_list:
             return AcceptanceResult(
@@ -367,6 +527,9 @@ class AcceptanceAgent:
             )
 
         # Step 2: Generate validation strategy using LLM
+        self._emit_event("acceptance_step", "🧠 步骤2: 生成验收策略（调用LLM）...")
+        strategy_start = time.time()
+
         criteria_str = "\n".join(
             f"- {i+1}. {c}" for i, c in enumerate(acceptance_criteria or [])
         )
@@ -383,13 +546,28 @@ class AcceptanceAgent:
             available_environments=available_envs,
         )
 
+        strategy_elapsed = time.time() - strategy_start
         if strategy is None:
+            self._emit_event(
+                "acceptance_step",
+                f"   ❌ 策略生成失败 (耗时: {strategy_elapsed:.1f}s)",
+                level="error",
+                metadata={"elapsed_s": strategy_elapsed, "success": False},
+            )
             return AcceptanceResult(
                 status=AcceptanceStatus.ERROR,
                 score=0.0,
                 summary="无法生成验收策略",
                 recommendations=["请检查LLM配置"],
             )
+
+        check_count = len(strategy.get("validation_checks", []))
+        self._emit_event(
+            "acceptance_step",
+            f"   ✓ 策略生成完成 (耗时: {strategy_elapsed:.1f}s)",
+            metadata={"elapsed_s": strategy_elapsed, "check_count": check_count},
+        )
+        self._emit_event("acceptance_step", f"   生成 {check_count} 个验收检查项")
 
         # Step 2.5: Prepare services (install deps & start services) if needed
         needs_api = any(
@@ -400,23 +578,34 @@ class AcceptanceAgent:
         service_prep_failed = False
         service_prep_errors: list[str] = []
         if needs_api:
-            logger.info("Detected API validation checks, preparing services...")
+            self._emit_event("acceptance_step", "🚀 步骤2.5: 准备服务（安装依赖、启动服务）...")
+            prep_start = time.time()
             prep_result = await self._prepare_services(
                 workspace_dir=workspace_dir,
                 file_list=file_list,
                 artifact_type=artifact_type,
             )
+            prep_elapsed = time.time() - prep_start
             if prep_result.get("services"):
                 service_info = prep_result
+                self._emit_event(
+                    "acceptance_step",
+                    f"   ✓ 服务准备完成 (耗时: {prep_elapsed:.1f}s)",
+                    metadata={"elapsed_s": prep_elapsed, "success": True},
+                )
             if not prep_result.get("success"):
                 service_prep_failed = True
                 service_prep_errors = prep_result.get("errors", [])
-                logger.warning(
-                    "Service preparation failed: %s",
-                    "; ".join(service_prep_errors),
+                self._emit_event(
+                    "acceptance_step",
+                    f"   ⚠ 服务准备失败: {'; '.join(service_prep_errors[:2])}",
+                    level="warning",
+                    metadata={"errors": service_prep_errors},
                 )
 
         # Step 3: Execute validation checks in appropriate environments
+        self._emit_event("acceptance_step", f"✅ 步骤3: 执行 {check_count} 个验收检查...")
+        checks_start = time.time()
         checks = await self._execute_validation_checks(
             strategy=strategy,
             workspace_dir=workspace_dir,
@@ -424,13 +613,55 @@ class AcceptanceAgent:
             skip_api_if_service_failed=service_prep_failed,
             service_prep_errors=service_prep_errors,
         )
+        checks_elapsed = time.time() - checks_start
+
+        # Summary of check results
+        passed_checks = sum(1 for c in checks if c.passed)
+        failed_checks = len(checks) - passed_checks
+        self._emit_event(
+            "acceptance_step",
+            f"   检查完成 (耗时: {checks_elapsed:.1f}s)",
+            metadata={"elapsed_s": checks_elapsed},
+        )
+        self._emit_event(
+            "acceptance_step",
+            f"   结果: ✓ {passed_checks} 通过, ✗ {failed_checks} 失败",
+            metadata={"passed": passed_checks, "failed": failed_checks},
+        )
 
         # Step 4: Analyze results using LLM
+        self._emit_event("acceptance_step", "📊 步骤4: 分析验收结果（调用LLM）...")
+        analyze_start = time.time()
         result = await self._analyze_results(
             checks=checks,
             user_requirement=user_requirement,
             acceptance_criteria=criteria_str,
         )
+        analyze_elapsed = time.time() - analyze_start
+        self._emit_event(
+            "acceptance_step",
+            f"   分析完成 (耗时: {analyze_elapsed:.1f}s)",
+            metadata={"elapsed_s": analyze_elapsed},
+        )
+
+        # Final summary
+        total_elapsed = time.time() - validation_start
+        self._emit_event("acceptance_end", "=" * 60)
+        status_emoji = "✅" if result.passed else "❌"
+        self._emit_event(
+            "acceptance_end",
+            f"{status_emoji} 验收结果: {result.status.value.upper()}",
+            metadata={
+                "status": result.status.value,
+                "score": result.score,
+                "total_elapsed_s": total_elapsed,
+            },
+        )
+        self._emit_event("acceptance_end", f"   得分: {result.score * 100:.0f}%")
+        self._emit_event("acceptance_end", f"   总耗时: {total_elapsed:.1f}s")
+        if result.summary:
+            self._emit_event("acceptance_end", f"   摘要: {result.summary[:100]}...")
+        self._emit_event("acceptance_end", "=" * 60)
 
         return result
 
@@ -528,12 +759,20 @@ class AcceptanceAgent:
         # Prefer RuntimeWorkspace if available (uses same Docker sandbox)
         if self._runtime_workspace and self._runtime_workspace.is_initialized:
             try:
-                # RuntimeWorkspace uses /workspace as base, so we list from root
-                files = self._runtime_workspace.list_directory("")
+                # Use relative path from workspace_dir to RuntimeWorkspace base
+                # This handles cases where workspace_dir might be delivery_dir
+                # or working_dir different from RuntimeWorkspace.workspace_dir
+                rt_base = getattr(self._runtime_workspace, "base_workspace_dir", "/workspace")
+                if workspace_dir.startswith(rt_base):
+                    # Extract relative path from base
+                    rel_path = workspace_dir[len(rt_base):].lstrip("/")
+                else:
+                    rel_path = ""
+                files = self._runtime_workspace.list_directory(rel_path)
                 if files:
                     # Recursively get all files
                     all_files = []
-                    self._collect_files_recursive(all_files, "", files)
+                    self._collect_files_recursive(all_files, "", files, base_path=rel_path)
                     return all_files[:100]
             except Exception as exc:
                 logger.warning("Failed to list files via RuntimeWorkspace: %s", exc)
@@ -558,23 +797,40 @@ class AcceptanceAgent:
         return []
 
     def _collect_files_recursive(
-        self, all_files: list[str], prefix: str, entries: list[str]
+        self,
+        all_files: list[str],
+        prefix: str,
+        entries: list[str],
+        *,
+        base_path: str = "",
     ) -> None:
-        """Recursively collect files from directory listing."""
+        """Recursively collect files from directory listing.
+
+        Args:
+            all_files: List to append file paths to.
+            prefix: Current path prefix for file names.
+            entries: Directory entries to process.
+            base_path: Base path in container (e.g., "delivery" for /workspace/delivery).
+        """
         for entry in entries:
             if entry.startswith(".") or entry.startswith("_"):
                 continue
-            full_path = f"{prefix}/{entry}" if prefix else entry
+            # File path relative to workspace_dir (for returned results)
+            file_path = f"{prefix}/{entry}" if prefix else entry
+            # Container path for list_directory calls
+            container_path = f"{base_path}/{file_path}".lstrip("/") if base_path else file_path
             try:
                 # Try to list as directory
-                sub_entries = self._runtime_workspace.list_directory(full_path)
+                sub_entries = self._runtime_workspace.list_directory(container_path)
                 if sub_entries:
-                    self._collect_files_recursive(all_files, full_path, sub_entries)
+                    self._collect_files_recursive(
+                        all_files, file_path, sub_entries, base_path=base_path
+                    )
                 else:
-                    all_files.append(full_path)
+                    all_files.append(file_path)
             except Exception:
                 # Probably a file, not a directory
-                all_files.append(full_path)
+                all_files.append(file_path)
 
     async def _generate_validation_strategy(
         self,
@@ -648,7 +904,8 @@ class AcceptanceAgent:
         commands = startup_strategy.get("commands", [])
 
         # Execute startup commands
-        for cmd_spec in commands:
+        total_cmds = len(commands)
+        for cmd_idx, cmd_spec in enumerate(commands, 1):
             cmd = cmd_spec.get("command", "")
             desc = cmd_spec.get("description", cmd[:50])
             cmd_working_dir = cmd_spec.get("working_dir", "")
@@ -679,20 +936,23 @@ class AcceptanceAgent:
             if not cmd:
                 continue
 
-            logger.info("Executing: %s", desc)
+            _log_progress(f"      [{cmd_idx}/{total_cmds}] 执行: {desc}")
+            _log_progress(f"               命令: {cmd[:80]}{'...' if len(cmd) > 80 else ''}")
 
             # For background commands, wrap with nohup
             if background:
                 cmd = f"nohup {cmd} > /tmp/service_{len(result['services'])}.log 2>&1 & echo $!"
 
-            exec_result = self._execute_command_in_workspace(
+            cmd_start = time.time()
+            exec_result = await self._execute_command_in_workspace(
                 cmd,
                 working_dir=effective_working_dir,
                 timeout=timeout,
             )
+            cmd_elapsed = time.time() - cmd_start
 
             if exec_result["success"]:
-                logger.info("Success: %s", desc)
+                _log_progress(f"               ✓ 成功 ({cmd_elapsed:.1f}s)")
                 if background and exec_result["output"].strip():
                     result["services"].append({
                         "description": desc,
@@ -701,16 +961,18 @@ class AcceptanceAgent:
             else:
                 error_msg = f"{desc}: {exec_result['error'][:200]}"
                 result["errors"].append(error_msg)
-                logger.warning("Failed: %s", error_msg)
+                _log_progress(f"               ✗ 失败 ({cmd_elapsed:.1f}s)", level="warning")
+                _log_progress(f"               错误: {exec_result['error'][:100]}", level="warning")
 
                 # Check if this is a critical command
                 if cmd_spec.get("critical", False):
+                    _log_progress("      ⚠ 关键命令失败，终止服务准备", level="warning")
                     return result
 
         # Wait for services to initialize if any were started
         if result["services"]:
             wait_time = startup_strategy.get("wait_after_start", 3)
-            logger.info("Waiting %ds for services to initialize...", wait_time)
+            _log_progress(f"      ⏳ 等待 {wait_time}s 让服务初始化...")
             await asyncio.sleep(wait_time)
 
         result["success"] = len(result["errors"]) == 0
@@ -828,21 +1090,58 @@ class AcceptanceAgent:
             serve_url: URL for browser tests.
             skip_api_if_service_failed: If True, skip API checks and mark as failed.
             service_prep_errors: Error messages from service preparation.
+
+        Returns:
+            List of ValidationCheck results. If a critical check fails,
+            subsequent checks are skipped.
         """
         checks: list[ValidationCheck] = []
+        critical_failed = False  # Track if any critical check failed
+        total_checks = len(strategy.get("validation_checks", []))
 
-        for check_spec in strategy.get("validation_checks", []):
+        for idx, check_spec in enumerate(strategy.get("validation_checks", []), 1):
             name = check_spec.get("name", "Unknown")
             description = check_spec.get("description", "")
             env_str = check_spec.get("environment", "cli")
             action = check_spec.get("action", {})
+            is_critical = check_spec.get("critical", False)
+            phase = check_spec.get("phase", "function")
+
+            # Skip remaining checks if a critical check has already failed
+            if critical_failed:
+                check = ValidationCheck(
+                    name=name,
+                    description=description,
+                    environment=ValidationEnvironment.CLI,
+                    action=action,
+                    passed=False,
+                    error="跳过：前置关键检查失败",
+                    critical=is_critical,
+                    phase=phase,
+                )
+                checks.append(check)
+                self._emit_event(
+                    "acceptance_check",
+                    f"   [{idx}/{total_checks}] ⏭ {name} - 跳过(前置失败)",
+                    metadata={"name": name, "skipped": True},
+                )
+                continue
 
             try:
                 env = ValidationEnvironment(env_str)
             except ValueError:
                 env = ValidationEnvironment.CLI
 
-            logger.info("Running validation: %s (env=%s)", name, env.value)
+            # Log check start with phase info
+            phase_emoji = {"dependency": "📦", "compile": "🔨", "startup": "🚀", "function": "⚙️"}.get(phase, "📋")
+            critical_marker = "[关键]" if is_critical else ""
+            self._emit_event(
+                "acceptance_check",
+                f"   [{idx}/{total_checks}] {phase_emoji} {name} {critical_marker}",
+                metadata={"name": name, "phase": phase, "critical": is_critical, "index": idx},
+            )
+            self._emit_event("acceptance_check", f"            环境: {env.value}, 阶段: {phase}")
+            check_start = time.time()
 
             try:
                 if env == ValidationEnvironment.CLI:
@@ -872,6 +1171,8 @@ class AcceptanceAgent:
                             action=action,
                             passed=False,
                             error=error_msg,
+                            critical=is_critical,
+                            phase=phase,
                         )
                     else:
                         check = await self._execute_api_check(
@@ -888,6 +1189,8 @@ class AcceptanceAgent:
                         action=action,
                         passed=False,
                         error=f"Environment {env.value} not yet implemented",
+                        critical=is_critical,
+                        phase=phase,
                     )
             except Exception as exc:
                 check = ValidationCheck(
@@ -897,18 +1200,53 @@ class AcceptanceAgent:
                     action=action,
                     passed=False,
                     error=str(exc),
+                    critical=is_critical,
+                    phase=phase,
                 )
 
+            # Set critical and phase on check (in case it was created by sub-methods)
+            check.critical = is_critical
+            check.phase = phase
+
             checks.append(check)
-            logger.info(
-                "Validation '%s': %s",
-                name,
-                "PASSED" if check.passed else "FAILED",
-            )
+            check_elapsed = time.time() - check_start
+
+            # Log check result with details
+            if check.passed:
+                self._emit_event(
+                    "acceptance_check",
+                    f"            ✓ 通过 ({check_elapsed:.1f}s)",
+                    metadata={"name": name, "passed": True, "elapsed_s": check_elapsed},
+                )
+                if check.output and len(check.output) < 100:
+                    self._emit_event("acceptance_check", f"            输出: {check.output}")
+            else:
+                self._emit_event(
+                    "acceptance_check",
+                    f"            ✗ 失败 ({check_elapsed:.1f}s)",
+                    level="warning",
+                    metadata={"name": name, "passed": False, "elapsed_s": check_elapsed, "error": check.error},
+                )
+                if check.error:
+                    self._emit_event(
+                        "acceptance_check",
+                        f"            错误: {check.error[:150]}",
+                        level="warning",
+                    )
+
+            # If critical check failed, mark for skipping subsequent checks
+            if is_critical and not check.passed:
+                critical_failed = True
+                self._emit_event(
+                    "acceptance_check",
+                    f"   ⚠ 关键检查 '{name}' 失败，后续检查将被跳过",
+                    level="warning",
+                    metadata={"critical_failure": True, "name": name},
+                )
 
         return checks
 
-    def _execute_command_in_workspace(
+    async def _execute_command_in_workspace(
         self, command: str, *, working_dir: str | None = None, timeout: int = 300
     ) -> dict[str, Any]:
         """Execute command using RuntimeWorkspace or SandboxOrchestrator.
@@ -917,7 +1255,7 @@ class AcceptanceAgent:
         """
         # Prefer RuntimeWorkspace if available (same Docker sandbox)
         if self._runtime_workspace and self._runtime_workspace.is_initialized:
-            result = self._runtime_workspace.execute_command(
+            result = await self._runtime_workspace.execute_command(
                 command, working_dir=working_dir, timeout=timeout
             )
             return {
@@ -955,7 +1293,7 @@ class AcceptanceAgent:
             timeout = action.get("timeout", self._default_timeout)
 
             # Use unified execution method (prefers RuntimeWorkspace)
-            result = self._execute_command_in_workspace(
+            result = await self._execute_command_in_workspace(
                 command, working_dir=workspace_dir, timeout=timeout
             )
 
@@ -979,13 +1317,13 @@ class AcceptanceAgent:
             for path in paths:
                 full_path = f"{workspace_dir}/{path}"
                 if check_type == "exists":
-                    result = self._execute_command_in_workspace(
+                    result = await self._execute_command_in_workspace(
                         f"test -e {full_path} && echo 'EXISTS' || echo 'NOT_FOUND'",
                         timeout=10,
                     )
                     passed = "EXISTS" in result["output"]
                 elif check_type == "not_empty":
-                    result = self._execute_command_in_workspace(
+                    result = await self._execute_command_in_workspace(
                         f"test -s {full_path} && echo 'NOT_EMPTY' || echo 'EMPTY'",
                         timeout=10,
                     )
@@ -1294,7 +1632,7 @@ class AcceptanceAgent:
             cmd = f"curl --connect-timeout 5 -m 15 -s -o /dev/null -w '%{{http_code}}' -X {method} {header_args} {body_arg} '{url}'"
 
             # Use unified execution method (prefers RuntimeWorkspace)
-            result = self._execute_command_in_workspace(cmd, timeout=30)
+            result = await self._execute_command_in_workspace(cmd, timeout=30)
 
             status_code = result["output"].strip() if result["output"] else "0"
             passed = status_code == str(expected_status)
@@ -1325,12 +1663,50 @@ class AcceptanceAgent:
         user_requirement: str,
         acceptance_criteria: str,
     ) -> AcceptanceResult:
-        """Use LLM to analyze validation results against acceptance criteria."""
+        """Use LLM to analyze validation results against acceptance criteria.
+
+        IMPORTANT: If any critical check failed, immediately return FAILED
+        status without consulting the LLM. This ensures that dependency,
+        compile, and startup failures cannot be overridden.
+        """
         if not checks:
             return AcceptanceResult(
                 status=AcceptanceStatus.ERROR,
                 score=0.0,
                 summary="没有执行任何验收检查",
+            )
+
+        # Check for critical failures first - these cannot be overridden
+        critical_failures = [c for c in checks if c.critical and not c.passed]
+        if critical_failures:
+            failed_phases = set(c.phase for c in critical_failures)
+            failed_names = [c.name for c in critical_failures]
+            self._emit_event(
+                "acceptance_step",
+                "⚠️ 发现关键检查失败，跳过LLM分析",
+                level="warning",
+                metadata={"critical_failures": len(critical_failures), "phases": list(failed_phases)},
+            )
+            self._emit_event(
+                "acceptance_step",
+                f"   失败阶段: {', '.join(failed_phases)}",
+                level="warning",
+            )
+            for cf in critical_failures[:3]:
+                self._emit_event(
+                    "acceptance_step",
+                    f"   - {cf.name}: {cf.error or '检查失败'}",
+                    level="warning",
+                )
+            return AcceptanceResult(
+                status=AcceptanceStatus.FAILED,
+                score=0.0,
+                checks=checks,
+                summary=f"关键验收检查失败（{', '.join(failed_phases)}阶段）：{'; '.join(failed_names[:3])}",
+                recommendations=[
+                    f"修复 {c.phase} 阶段的问题：{c.name} - {c.error or '检查失败'}"
+                    for c in critical_failures[:5]
+                ],
             )
 
         # Format results for LLM
@@ -1340,6 +1716,8 @@ class AcceptanceAgent:
                     "name": c.name,
                     "description": c.description,
                     "environment": c.environment.value,
+                    "phase": c.phase,
+                    "critical": c.critical,
                     "passed": c.passed,
                     "output": c.output[:500] if c.output else "",
                     "error": c.error,
@@ -1379,13 +1757,16 @@ class AcceptanceAgent:
             logger.error("Failed to analyze results: %s", exc)
 
         # Fallback: simple pass ratio calculation
+        # Note: Critical failures are already handled above, so if we reach here,
+        # all critical checks have passed.
         passed_count = sum(1 for c in checks if c.passed)
         total_count = len(checks)
         score = passed_count / total_count if total_count > 0 else 0.0
 
-        if score >= 0.8:
+        # Require higher threshold: 90% for PASSED (was 80%)
+        if score >= 0.9:
             status = AcceptanceStatus.PASSED
-        elif score >= 0.5:
+        elif score >= 0.6:
             status = AcceptanceStatus.PARTIAL
         else:
             status = AcceptanceStatus.FAILED
@@ -1394,7 +1775,7 @@ class AcceptanceAgent:
             status=status,
             score=score,
             checks=checks,
-            summary=f"通过 {passed_count}/{total_count} 项检查",
+            summary=f"通过 {passed_count}/{total_count} 项检查（需要 90% 以上通过）",
         )
 
     def _extract_json(self, text: str) -> dict[str, Any] | None:

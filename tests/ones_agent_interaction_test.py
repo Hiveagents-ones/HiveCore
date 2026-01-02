@@ -55,7 +55,7 @@ def _create_mock_profile(agent_id: str, skills: set[str] | None = None) -> Agent
     return AgentProfile(
         agent_id=agent_id,
         name=agent_id,
-        static_score=StaticScore(performance=0.9, brand=0.8, recognition=0.85),
+        static_score=StaticScore(performance=0.9, recognition=0.85, brand_certified=1.0),
         capabilities=AgentCapabilities(
             skills=skills or {"python", "rag"},
             tools={"docker"},

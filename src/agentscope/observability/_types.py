@@ -111,7 +111,13 @@ class TimelineEvent:
         timestamp (`datetime`):
             When the event occurred.
         event_type (`str`):
-            Type of event: agent_start, agent_end, llm_call, task_status.
+            Type of event:
+            - agent_start, agent_end: Agent execution lifecycle
+            - llm_call: LLM API call
+            - task_status: Task status change
+            - acceptance_start, acceptance_end: Acceptance validation lifecycle
+            - acceptance_step: Acceptance validation step progress
+            - acceptance_check: Individual validation check result
         project_id (`str | None`):
             The project this event belongs to.
         agent_id (`str | None`):
@@ -123,7 +129,16 @@ class TimelineEvent:
     """
 
     timestamp: datetime
-    event_type: Literal["agent_start", "agent_end", "llm_call", "task_status"]
+    event_type: Literal[
+        "agent_start",
+        "agent_end",
+        "llm_call",
+        "task_status",
+        "acceptance_start",
+        "acceptance_end",
+        "acceptance_step",
+        "acceptance_check",
+    ]
     project_id: str | None = None
     agent_id: str | None = None
     node_id: str | None = None

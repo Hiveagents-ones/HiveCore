@@ -49,6 +49,106 @@
     "file_write",
     "shell_exec"
   ],
+  "dependency_config": {
+    "dependency_file": "requirements.txt",
+    "install_command": "pip install -r requirements.txt",
+    "add_command": "pip install {package}",
+    "file_format": "pip-requirements",
+    "lock_file": "",
+    "stdlib_modules": [
+      "os", "sys", "re", "json", "typing", "dataclasses", "pathlib",
+      "collections", "functools", "itertools", "datetime", "time",
+      "asyncio", "abc", "enum", "logging", "unittest", "io", "copy",
+      "math", "random", "hashlib", "base64", "uuid", "threading",
+      "multiprocessing", "subprocess", "shutil", "tempfile", "glob",
+      "contextlib", "warnings", "traceback", "inspect", "operator"
+    ],
+    "import_patterns": [
+      "^import\\s+(\\w+)",
+      "^from\\s+(\\w+)"
+    ]
+  },
+  "validation_config": {
+    "compile_commands": [
+      "python -m py_compile {file}"
+    ],
+    "linter_commands": [
+      "python -m flake8 {file} --max-line-length=120 --ignore=E501,W503"
+    ],
+    "startup_command": "python manage.py runserver 0.0.0.0:8000",
+    "health_endpoint": "http://localhost:8000/health/",
+    "test_command": "python manage.py test"
+  },
+  "repair_config": {
+    "error_patterns": {
+      "cannot import name '(\\w+)' from partially initialized module '([^']+)'": "循环导入错误：模块 $2 中的 $1 存在循环依赖。重构模块结构或延迟导入。",
+      "ModuleNotFoundError: No module named '([^']+)'": "缺失模块 $1。检查 requirements.txt 并添加对应依赖。",
+      "django\\.core\\.exceptions\\.ImproperlyConfigured": "Django 配置错误。检查 settings.py 中的 INSTALLED_APPS、DATABASES 等配置。",
+      "No such table": "数据库表不存在。运行 python manage.py makemigrations 和 python manage.py migrate。",
+      "OperationalError.*no such column": "数据库列不存在。需要创建新的迁移并应用。",
+      "django\\.db\\.utils\\.ProgrammingError": "数据库编程错误。检查模型定义和迁移文件。",
+      "RelatedObjectDoesNotExist": "关联对象不存在。检查外键关系和数据完整性。",
+      "FieldError.*Cannot resolve keyword": "字段错误：查询中使用了不存在的字段名。检查模型字段定义。",
+      "CSRF verification failed": "CSRF 验证失败。确保表单包含 {% csrf_token %} 或正确配置 CSRF 中间件。",
+      "TemplateDoesNotExist": "模板文件不存在。检查 TEMPLATES 配置和模板文件路径。"
+    },
+    "sync_files": [
+      "requirements.txt",
+      "{app}/models.py",
+      "{app}/views.py",
+      "{app}/urls.py",
+      "{app}/admin.py"
+    ],
+    "repair_guidelines": [
+      "修改模型后必须运行 makemigrations 和 migrate",
+      "添加新应用时需更新 INSTALLED_APPS",
+      "添加新依赖时必须同步更新 requirements.txt",
+      "修改 URL 配置时检查 include() 路径正确性",
+      "使用外键时注意 on_delete 参数设置"
+    ],
+    "common_fixes": {
+      "migration_error": "数据库迁移问题:\n```bash\npython manage.py makemigrations\npython manage.py migrate\n```",
+      "circular_import": "Django 中避免循环导入:\n1. 使用字符串引用模型: ForeignKey('app.Model')\n2. 延迟导入到函数内部",
+      "installed_apps": "确保应用已添加到 INSTALLED_APPS:\n```python\nINSTALLED_APPS = [\n    ...\n    'your_app',\n]\n```"
+    }
+  },
+  "blueprint_config": {
+    "function_extraction_prompt": "基于 Django 框架，为每个功能生成对应的视图函数/类、模型、URL 配置和模板。",
+    "required_patterns": {
+      "crud": [
+        "{entity}_list",
+        "{entity}_detail",
+        "{entity}_create",
+        "{entity}_update",
+        "{entity}_delete"
+      ],
+      "auth": [
+        "login_view",
+        "logout_view",
+        "register_view",
+        "profile_view"
+      ],
+      "api": [
+        "{entity}_api_list",
+        "{entity}_api_detail"
+      ]
+    },
+    "file_patterns": {
+      "list": "{app}/views.py",
+      "detail": "{app}/views.py",
+      "create": "{app}/views.py",
+      "update": "{app}/views.py",
+      "delete": "{app}/views.py"
+    },
+    "naming_conventions": {
+      "view_file": "{app}/views.py",
+      "model_file": "{app}/models.py",
+      "url_file": "{app}/urls.py",
+      "form_file": "{app}/forms.py",
+      "admin_file": "{app}/admin.py",
+      "template_file": "templates/{app}/{entity}_{action}.html"
+    }
+  },
   "metadata": {
     "framework": "django",
     "category": "backend"

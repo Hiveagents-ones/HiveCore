@@ -38,6 +38,7 @@ from ._pricing import calculate_cost, get_model_pricing
 from ._timeline_tracker import TimelineTracker
 from ._types import AgentExecution, TimelineEvent, UsageRecord
 from ._usage_collector import UsageCollector
+from ._webhook import WebhookExporter
 
 __all__ = [
     # Core hub
@@ -48,6 +49,7 @@ __all__ = [
     # Exporters
     "PrometheusExporter",
     "JsonExporter",
+    "WebhookExporter",
     # Types
     "UsageRecord",
     "AgentExecution",

@@ -1,0 +1,874 @@
+# -*- coding: utf-8 -*-
+"""Runtime workspace with dual-directory (PR mode) support.
+
+This module extends RuntimeWorkspace with delivery/working directory isolation
+to prevent requirement regression:
+- delivery/ : Main branch directory, contains merged stable code
+- working/  : Current requirement's working branch
+
+Usage:
+    ws = RuntimeWorkspaceWithPR(...)
+    await ws.start()
+
+    # For each requirement
+    await ws.init_for_requirement("REQ-001")
+    # ... agent implementation in working/ ...
+
+    # Review changes
+    diff = await ws.get_pr_diff()
+
+    # Merge if approved
+    result = await ws.merge_to_delivery("REQ-001")
+    if result.success:
+        print("Merged successfully")
+    else:
+        print(f"Conflicts: {result.conflicts}")
+"""
+from __future__ import annotations
+
+import asyncio
+from typing import Any, TYPE_CHECKING
+
+# Import data classes and mixin from git worktree module
+from ._git_worktree import MergeResult, AgentPRStats, GitWorktreeMixin
+
+if TYPE_CHECKING:
+    pass
+
+
+class RuntimeWorkspaceWithPR(GitWorktreeMixin):
+    """Docker-based workspace with dual-directory (PR mode) support.
+
+    Provides isolated environment with delivery/working separation:
+    - delivery/: Main branch, stable merged code
+    - working/: Current requirement's working branch
+
+    This prevents requirement regression by isolating each requirement's
+    changes until they are explicitly merged.
+
+    Architecture:
+    - Container has /workspace/delivery and /workspace/working directories
+    - init_for_requirement() syncs delivery -> working for each new req
+    - Agents work in working/ directory
+    - get_pr_diff() shows changes relative to delivery/
+    - merge_to_delivery() copies approved changes to delivery/
+    """
+
+    def __init__(
+        self,
+        base_workspace_dir: str = "/workspace",
+        image: str = "agentscope/runtime-sandbox-filesystem:latest",
+        timeout: int = 600,
+        enable_pr_mode: bool = True,
+    ):
+        """Initialize the runtime workspace with PR mode support.
+
+        Args:
+            base_workspace_dir (`str`):
+                Base directory path inside container.
+            image (`str`):
+                Docker image name.
+            timeout (`int`):
+                Default command timeout in seconds.
+            enable_pr_mode (`bool`):
+                Whether to enable dual-directory PR mode. If False,
+                behaves like original RuntimeWorkspace.
+        """
+        self.base_workspace_dir = base_workspace_dir
+        self.image = image
+        self.timeout = timeout
+        self.enable_pr_mode = enable_pr_mode
+
+        # Dual directory paths
+        self.delivery_dir = f"{base_workspace_dir}/delivery"
+        self.working_dir = f"{base_workspace_dir}/working"
+
+        # For backward compatibility, workspace_dir points to working dir in PR mode
+        self.workspace_dir = self.working_dir if enable_pr_mode else base_workspace_dir
+
+        # Container state
+        self.container_id: str | None = None
+        self.sandbox_id: str | None = None
+        self.container_name: str | None = None
+        self.http_port: int = 8080
+        self._started = False
+        self._http_server_started = False
+
+        # Current requirement tracking
+        self._current_req_id: str | None = None
+
+    @property
+    def is_initialized(self) -> bool:
+        """Check if the workspace is initialized."""
+        return self._started and self.container_id is not None
+
+    @property
+    def http_url(self) -> str | None:
+        """Get the HTTP URL for accessing files from other containers.
+
+        Returns:
+            `str`: URL like http://runtime-xxxx:8080 or None if not available.
+        """
+        if self._http_server_started and self.container_name:
+            return f"http://{self.container_name}:{self.http_port}"
+        return None
+
+    async def exec(
+        self,
+        command: str,
+        timeout: int | None = None,
+        working_dir: str | None = None,
+    ) -> dict[str, Any]:
+        """Execute a command in the container asynchronously.
+
+        Args:
+            command (`str`):
+                Shell command to execute.
+            timeout (`int | None`):
+                Command timeout in seconds (uses default if None).
+            working_dir (`str | None`):
+                Working directory for command execution.
+
+        Returns:
+            `dict[str, Any]`:
+                Result with 'success', 'output', 'error', 'returncode' keys.
+        """
+        if not self.container_id:
+            return {
+                "success": False,
+                "output": "",
+                "error": "Container not started",
+                "returncode": -1,
+            }
+
+        timeout = timeout or self.timeout
+
+        # Prepend cd if working_dir is specified
+        if working_dir:
+            command = f"cd {working_dir} && {command}"
+
+        full_cmd = f"docker exec {self.container_id} sh -c {self._shell_quote(command)}"
+
+        try:
+            proc = await asyncio.create_subprocess_shell(
+                full_cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+
+            try:
+                stdout, stderr = await asyncio.wait_for(
+                    proc.communicate(),
+                    timeout=timeout,
+                )
+                return {
+                    "success": proc.returncode == 0,
+                    "output": stdout.decode("utf-8"),
+                    "error": stderr.decode("utf-8"),
+                    "returncode": proc.returncode,
+                }
+            except asyncio.TimeoutError:
+                proc.terminate()
+                return {
+                    "success": False,
+                    "output": "",
+                    "error": f"Timeout ({timeout}s)",
+                    "returncode": -1,
+                }
+
+        except Exception as exc:
+            return {
+                "success": False,
+                "output": "",
+                "error": str(exc),
+                "returncode": -1,
+            }
+
+    def _shell_quote(self, s: str) -> str:
+        """Quote a string for safe shell execution.
+
+        Args:
+            s (`str`):
+                String to quote.
+
+        Returns:
+            `str`:
+                Quoted string safe for shell execution.
+        """
+        # Use single quotes and escape any single quotes in the string
+        return "'" + s.replace("'", "'\"'\"'") + "'"
+
+    def start(self) -> bool:
+        """Start the runtime workspace container (synchronous version).
+
+        The container runs with isolated directories.
+        In PR mode, creates both delivery/ and working/ directories.
+
+        Returns:
+            `bool`: True if started successfully.
+        """
+        # Run the async version synchronously for CLI compatibility
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # If we're in an async context, create a new thread
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor() as pool:
+                    future = pool.submit(asyncio.run, self._start_async())
+                    return future.result()
+            else:
+                return loop.run_until_complete(self._start_async())
+        except RuntimeError:
+            # No event loop exists, create one
+            return asyncio.run(self._start_async())
+
+    async def _start_async(self) -> bool:
+        """Start the runtime workspace container (async version).
+
+        The container runs with isolated directories.
+        In PR mode, creates both delivery/ and working/ directories.
+
+        Returns:
+            `bool`: True if started successfully.
+        """
+        from ._observability import get_logger
+        from ._sandbox import ensure_sandbox_network, SANDBOX_NETWORK_NAME
+
+        logger = get_logger()
+
+        # Check if Docker image exists
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "docker", "images", "-q", self.image,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, _ = await proc.communicate()
+            if not stdout.decode().strip():
+                logger.warn(f"[RuntimeWorkspace] Docker image not found: {self.image}")
+                return False
+        except Exception as exc:
+            logger.warn(f"[RuntimeWorkspace] Docker check failed: {exc}")
+            return False
+
+        # Ensure shared network exists
+        ensure_sandbox_network()
+
+        try:
+            import uuid
+            self.container_name = f"runtime-{uuid.uuid4().hex[:8]}"
+
+            # Start container
+            proc = await asyncio.create_subprocess_exec(
+                "docker", "run", "-d", "--rm",
+                "--name", self.container_name,
+                "--network", SANDBOX_NETWORK_NAME,
+                "-w", self.base_workspace_dir,
+                self.image,
+                "tail", "-f", "/dev/null",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, stderr = await proc.communicate()
+
+            if proc.returncode != 0:
+                logger.warn(f"[RuntimeWorkspace] Failed to start: {stderr.decode()}")
+                return False
+
+            self.container_id = stdout.decode().strip()
+            self.sandbox_id = self.container_id[:12]
+            self._started = True
+
+            # Install rsync for directory synchronization (REQUIRED)
+            # rsync is critical for cherry-pick conflict resolution and sync operations.
+            # Without rsync, cherry-pick conflicts cannot be resolved, leading to:
+            # - 31+ Sync failures
+            # - 28+ Cherry-pick failures
+            # - All requirements failing with 0% pass rate
+            from ._sandbox import ensure_rsync_installed_async
+            if not await ensure_rsync_installed_async(self.container_id):
+                error_msg = (
+                    "[RuntimeWorkspace] FATAL: rsync installation failed. "
+                    "rsync is required for PR mode sync operations. "
+                    "Please ensure the Docker image has rsync pre-installed or "
+                    "network access to install it. Aborting."
+                )
+                logger.error(error_msg)
+                # Clean up the container since we can't proceed
+                await self._stop_async()
+                raise RuntimeError(error_msg)
+
+            # Create directories
+            if self.enable_pr_mode:
+                # IMPORTANT: Remove any existing .git in base_workspace_dir
+                # The Docker image may have a .git directory in /workspace,
+                # which would cause worktree operations to use /workspace as the
+                # main repo instead of /workspace/delivery. This leads to:
+                # 1. Branch switching affecting the main workspace
+                # 2. Worktree confusion (main and worktree on same branch)
+                # 3. File deletions when branches have different content
+                git_check = await self.exec(
+                    f"test -d {self.base_workspace_dir}/.git && echo 'exists'"
+                )
+                if git_check.get("success") and "exists" in git_check.get("output", ""):
+                    logger.warn(
+                        f"[RuntimeWorkspace] Removing existing .git from {self.base_workspace_dir} "
+                        f"(git repo should be in {self.delivery_dir} for PR mode)"
+                    )
+                    await self.exec(f"rm -rf {self.base_workspace_dir}/.git")
+
+                # Create both delivery and working directories
+                await self.exec(f"mkdir -p {self.delivery_dir} {self.working_dir}")
+                # Fix ownership for node user (Claude Code runs as node)
+                await self.exec(f"chown -R node:node {self.delivery_dir} {self.working_dir}")
+                logger.info(
+                    f"[RuntimeWorkspace] Started PR mode: {self.sandbox_id} "
+                    f"(delivery={self.delivery_dir}, working={self.working_dir})"
+                )
+            else:
+                # Create single workspace directory
+                await self.exec(f"mkdir -p {self.base_workspace_dir}")
+                logger.info(f"[RuntimeWorkspace] Started: {self.sandbox_id}")
+
+            return True
+
+        except Exception as exc:
+            logger.warn(f"[RuntimeWorkspace] Error starting: {exc}")
+            return False
+
+    def stop(self) -> None:
+        """Stop the runtime workspace container (synchronous version)."""
+        # Run the async version synchronously for CLI compatibility
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor() as pool:
+                    future = pool.submit(asyncio.run, self._stop_async())
+                    future.result()
+            else:
+                loop.run_until_complete(self._stop_async())
+        except RuntimeError:
+            asyncio.run(self._stop_async())
+
+    async def _stop_async(self) -> None:
+        """Stop the runtime workspace container (async version)."""
+        from ._observability import get_logger
+
+        logger = get_logger()
+
+        if self.container_id:
+            try:
+                proc = await asyncio.create_subprocess_exec(
+                    "docker", "stop", self.container_id,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                await asyncio.wait_for(proc.communicate(), timeout=30)
+                logger.info(f"[RuntimeWorkspace] Stopped: {self.sandbox_id}")
+            except Exception as exc:
+                logger.warn(f"[RuntimeWorkspace] Error stopping: {exc}")
+            finally:
+                self.container_id = None
+                self.sandbox_id = None
+                self._started = False
+                self._current_req_id = None
+
+    async def init_for_requirement(self, req_id: str) -> None:
+        """Initialize working directory for a new requirement.
+
+        This method prepares the working directory by:
+        1. Cleaning the working directory
+        2. Syncing from delivery to working using rsync (incremental copy)
+        3. Recording the current requirement ID
+
+        Args:
+            req_id (`str`):
+                Requirement ID (e.g., "REQ-001").
+
+        Raises:
+            RuntimeError: If container is not started or PR mode is disabled.
+        """
+        from ._observability import get_logger
+
+        logger = get_logger()
+
+        if not self.is_initialized:
+            raise RuntimeError("Container not started. Call start() first.")
+
+        if not self.enable_pr_mode:
+            raise RuntimeError("PR mode is not enabled.")
+
+        logger.info(f"[RuntimeWorkspace] Initializing for requirement: {req_id}")
+
+        # Step 1: Clean working directory (preserve directory structure)
+        clean_result = await self.exec(
+            f"rm -rf {self.working_dir}/* {self.working_dir}/.[!.]* 2>/dev/null || true"
+        )
+
+        # Step 2: Sync from delivery to working using rsync
+        # rsync -a: archive mode (preserves permissions, timestamps, etc.)
+        # --delete: delete files in working that don't exist in delivery
+        # Trailing slashes are important for rsync behavior
+        sync_result = await self.exec(
+            f"rsync -a --delete {self.delivery_dir}/ {self.working_dir}/ 2>/dev/null || "
+            f"cp -a {self.delivery_dir}/. {self.working_dir}/ 2>/dev/null || true"
+        )
+
+        if not sync_result["success"] and sync_result["error"]:
+            logger.warn(f"[RuntimeWorkspace] Sync warning: {sync_result['error']}")
+
+        # Step 3: Record current requirement
+        self._current_req_id = req_id
+
+        logger.info(f"[RuntimeWorkspace] Working directory ready for {req_id}")
+
+    async def get_pr_diff(self) -> str:
+        """Get the diff between working and delivery directories (PR diff).
+
+        Returns a git-diff-like output showing all changes in the working
+        directory relative to the delivery directory.
+
+        Returns:
+            `str`:
+                Git diff format string showing all changes.
+                Empty string if no changes or error occurred.
+
+        Raises:
+            RuntimeError: If container is not started or PR mode is disabled.
+        """
+        from ._observability import get_logger
+
+        logger = get_logger()
+
+        if not self.is_initialized:
+            raise RuntimeError("Container not started. Call start() first.")
+
+        if not self.enable_pr_mode:
+            raise RuntimeError("PR mode is not enabled.")
+
+        # Use diff command to compare directories
+        # -r: recursive
+        # -u: unified diff format (like git diff)
+        # -N: treat absent files as empty
+        diff_result = await self.exec(
+            f"diff -ruN {self.delivery_dir} {self.working_dir} 2>/dev/null || true"
+        )
+
+        diff_output = diff_result["output"]
+
+        # Transform diff output to make it more git-like
+        # Replace absolute paths with relative paths
+        if diff_output:
+            diff_output = diff_output.replace(
+                f"--- {self.delivery_dir}/",
+                "--- a/",
+            )
+            diff_output = diff_output.replace(
+                f"+++ {self.working_dir}/",
+                "+++ b/",
+            )
+            # Handle new files
+            diff_output = diff_output.replace(
+                f"--- {self.delivery_dir}",
+                "--- a",
+            )
+            diff_output = diff_output.replace(
+                f"+++ {self.working_dir}",
+                "+++ b",
+            )
+
+        return diff_output
+
+    async def merge_to_delivery(self, req_id: str) -> MergeResult:
+        """Merge changes from working directory to delivery directory.
+
+        This method:
+        1. Checks for potential conflicts (files modified in both)
+        2. If no conflicts, copies working files to delivery
+        3. Returns merge result with status
+
+        Args:
+            req_id (`str`):
+                Requirement ID for logging purposes.
+
+        Returns:
+            `MergeResult`:
+                Result object with success status, conflicts list, and message.
+
+        Raises:
+            RuntimeError: If container is not started or PR mode is disabled.
+        """
+        from ._observability import get_logger
+
+        logger = get_logger()
+
+        if not self.is_initialized:
+            raise RuntimeError("Container not started. Call start() first.")
+
+        if not self.enable_pr_mode:
+            raise RuntimeError("PR mode is not enabled.")
+
+        logger.info(f"[RuntimeWorkspace] Merging {req_id} to delivery")
+
+        # Step 1: Detect conflicts
+        # For now, we use a simple strategy: if file exists in both and differs,
+        # it's not a conflict because working is always based on delivery.
+        # True conflicts would require tracking external changes to delivery.
+        conflicts = await self._detect_conflicts()
+
+        if conflicts:
+            logger.warn(f"[RuntimeWorkspace] Merge conflicts detected: {conflicts}")
+            return MergeResult(
+                success=False,
+                conflicts=conflicts,
+                message=f"Merge blocked: {len(conflicts)} conflict(s) detected",
+            )
+
+        # Step 2: Perform merge (rsync working -> delivery)
+        merge_result = await self.exec(
+            f"rsync -a --delete {self.working_dir}/ {self.delivery_dir}/"
+        )
+
+        if not merge_result["success"]:
+            error_msg = merge_result["error"] or "Unknown error during merge"
+            logger.warn(f"[RuntimeWorkspace] Merge failed: {error_msg}")
+            return MergeResult(
+                success=False,
+                conflicts=[],
+                message=f"Merge failed: {error_msg}",
+            )
+
+        # Step 3: Get list of changed files for the message
+        diff_result = await self.exec(
+            f"diff -rq {self.delivery_dir} {self.working_dir} 2>/dev/null || true"
+        )
+        changed_files = len([
+            line for line in diff_result["output"].split("\n")
+            if line.strip()
+        ])
+
+        logger.info(f"[RuntimeWorkspace] Merged {req_id} successfully")
+
+        return MergeResult(
+            success=True,
+            conflicts=[],
+            message=f"Successfully merged {req_id} ({changed_files} file(s) updated)",
+        )
+
+    async def _detect_conflicts(self) -> list[str]:
+        """Detect potential merge conflicts.
+
+        In the current simple model, conflicts occur when:
+        - A file in delivery was modified externally after working was synced
+
+        For now, we assume no external modifications to delivery, so no conflicts.
+        Future versions could track checksums or use git for proper conflict detection.
+
+        Returns:
+            `list[str]`:
+                List of file paths with potential conflicts.
+        """
+        # In the simple model, working is always based on delivery,
+        # and only one requirement runs at a time.
+        # Therefore, no conflicts are possible unless delivery is modified externally.
+        #
+        # Future enhancement: store checksums of delivery files when init_for_requirement
+        # is called, and compare them before merge.
+        return []
+
+    # -------------------------------------------------------------------------
+    # Backward-compatible methods (delegating to working directory)
+    # -------------------------------------------------------------------------
+
+    async def write_file(self, path: str, content: str) -> bool:
+        """Write a file to the working directory.
+
+        Args:
+            path (`str`):
+                Relative path within workspace.
+            content (`str`):
+                File content.
+
+        Returns:
+            `bool`: True if successful.
+        """
+        if not self.container_id:
+            return False
+
+        # Skip .git directory files
+        if path.startswith(".git/") or path.startswith(".git\\"):
+            return True
+
+        import tempfile
+        import os
+
+        full_path = f"{self.workspace_dir}/{path}"
+
+        try:
+            # Create parent directory
+            parent_dir = os.path.dirname(full_path)
+            await self.exec(f"mkdir -p {parent_dir}")
+
+            # Write content to temp file on host
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                suffix=os.path.basename(path),
+                delete=False,
+            ) as tmp_file:
+                tmp_file.write(content)
+                tmp_path = tmp_file.name
+
+            try:
+                # Copy to container
+                proc = await asyncio.create_subprocess_exec(
+                    "docker", "cp", tmp_path, f"{self.container_id}:{full_path}",
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                _, stderr = await proc.communicate()
+
+                if proc.returncode != 0:
+                    from ._observability import get_logger
+                    get_logger().warn(
+                        f"[RuntimeWorkspace] docker cp failed {path}: {stderr.decode()}"
+                    )
+                    return False
+
+                # Fix ownership (optional, don't fail if it doesn't work)
+                await self.exec(f"chown node:node {full_path} 2>/dev/null || true")
+
+                return True
+            finally:
+                try:
+                    os.unlink(tmp_path)
+                except Exception:
+                    pass
+
+        except Exception as exc:
+            from ._observability import get_logger
+            get_logger().warn(f"[RuntimeWorkspace] Write failed {path}: {exc}")
+            return False
+
+    async def read_file(self, path: str) -> str:
+        """Read a file from the working directory.
+
+        Args:
+            path (`str`):
+                Relative path within workspace.
+
+        Returns:
+            `str`: File content or empty string if not found.
+        """
+        if not self.container_id:
+            return ""
+
+        full_path = f"{self.workspace_dir}/{path}"
+        result = await self.exec(f"cat {full_path}")
+
+        if result["success"]:
+            return result["output"]
+        return ""
+
+    async def list_files(self, pattern: str = "**/*") -> list[str]:
+        """List files in the working directory.
+
+        Args:
+            pattern (`str`):
+                Glob pattern (simplified, for compatibility).
+
+        Returns:
+            `list[str]`: List of relative file paths.
+        """
+        if not self.container_id:
+            return []
+
+        result = await self.exec(
+            f"find {self.workspace_dir} -type f "
+            f"-not -path '*/.git/*' "
+            f"-not -path '*/node_modules/*' "
+            f"-not -path '*/__pycache__/*' "
+            f"-not -path '*/.venv/*' "
+            f"-not -path '*/venv/*' "
+            f"-not -path '*/.mypy_cache/*' "
+            f"-not -path '*/.pytest_cache/*'"
+        )
+
+        if not result["success"]:
+            return []
+
+        files = []
+        prefix = self.workspace_dir + "/"
+        for line in result["output"].strip().split("\n"):
+            if line and line.startswith(prefix):
+                files.append(line[len(prefix):])
+
+        return files
+
+    async def execute_command(
+        self,
+        command: str,
+        timeout: int | None = None,
+        working_dir: str | None = None,
+    ) -> dict[str, Any]:
+        """Execute a command in the container (alias for exec).
+
+        Args:
+            command (`str`):
+                Shell command to execute.
+            timeout (`int | None`):
+                Command timeout.
+            working_dir (`str | None`):
+                Working directory for command.
+
+        Returns:
+            `dict[str, Any]`: Result with 'success', 'output', 'error' keys.
+        """
+        return await self.exec(command, timeout, working_dir)
+
+    def start_http_server(self) -> bool:
+        """Start HTTP server inside container to serve workspace files.
+
+        The server runs on port 8080 and serves files from workspace.
+        Other containers on the same network can access via http://{container_name}:8080
+
+        Returns:
+            `bool`: True if server started successfully.
+        """
+        if not self.container_id:
+            return False
+
+        from ._observability import get_logger
+        import subprocess
+
+        logger = get_logger()
+
+        try:
+            # Start Python HTTP server in background
+            cmd = f"cd {self.workspace_dir} && python3 -m http.server {self.http_port} > /dev/null 2>&1 &"
+            result = subprocess.run(
+                ["docker", "exec", "-d", self.container_id, "sh", "-c", cmd],
+                capture_output=True,
+                timeout=10,
+            )
+            if result.returncode == 0:
+                self._http_server_started = True
+                logger.info(f"[RuntimeWorkspace] HTTP server started at {self.http_url}")
+                return True
+            return False
+        except Exception as exc:
+            logger.warn(f"[RuntimeWorkspace] Failed to start HTTP server: {exc}")
+            return False
+
+    def list_directory(self, path: str = "") -> list[str]:
+        """List entries in a directory inside container (synchronous).
+
+        Args:
+            path (`str`):
+                Relative path within workspace (empty for root).
+
+        Returns:
+            `list[str]`: List of entry names (files and directories).
+        """
+        if not self.container_id:
+            return []
+
+        try:
+            import subprocess
+            target_dir = f"{self.workspace_dir}/{path}" if path else self.workspace_dir
+            result = subprocess.run(
+                ["docker", "exec", self.container_id, "ls", "-1", target_dir],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            if result.returncode != 0:
+                return []
+            return [name for name in result.stdout.strip().split("\n") if name]
+        except Exception:
+            return []
+
+    def sync_to_host(self, host_dir: str) -> int:
+        """Sync files from container workspace to host directory.
+
+        This is needed for Git operations which run on the host filesystem.
+        Only syncs source files, excluding node_modules, __pycache__, .git, etc.
+
+        Args:
+            host_dir (`str`):
+                Host directory path to sync to.
+
+        Returns:
+            `int`: Number of files synced, or -1 on error.
+        """
+        if not self.container_id:
+            return -1
+
+        from ._observability import get_logger
+        import subprocess
+        import os
+
+        logger = get_logger()
+
+        try:
+            # Create host directory if needed
+            os.makedirs(host_dir, exist_ok=True)
+
+            # Use docker cp to copy files
+            # First, create a tar excluding unwanted directories
+            tar_cmd = (
+                f"cd {self.workspace_dir} && "
+                "tar cf - . "
+                "--exclude=node_modules "
+                "--exclude=__pycache__ "
+                "--exclude=.git "
+                "--exclude=.venv "
+                "--exclude=venv "
+                "--exclude=.mypy_cache "
+                "--exclude=.pytest_cache "
+                "--exclude='*.pyc' "
+                "2>/dev/null"
+            )
+
+            # Stream tar from container and extract on host
+            proc = subprocess.Popen(
+                ["docker", "exec", self.container_id, "sh", "-c", tar_cmd],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+
+            extract = subprocess.Popen(
+                ["tar", "xf", "-", "-C", host_dir],
+                stdin=proc.stdout,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+
+            if proc.stdout:
+                proc.stdout.close()
+
+            _, _ = extract.communicate(timeout=120)
+
+            # Count synced files
+            file_count = 0
+            for root, _, files in os.walk(host_dir):
+                file_count += len(files)
+
+            logger.info(
+                f"[RuntimeWorkspace] Synced {file_count} files to {host_dir}"
+            )
+            return file_count
+
+        except Exception as exc:
+            logger.warn(f"[RuntimeWorkspace] Sync failed: {exc}")
+            return -1
+
+    # Git worktree methods are inherited from GitWorktreeMixin
+
+
+__all__ = [
+    "MergeResult",
+    "AgentPRStats",
+    "RuntimeWorkspaceWithPR",
+]

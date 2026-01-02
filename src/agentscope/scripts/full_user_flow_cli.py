@@ -7,8 +7,7 @@ It provides a complete flow for requirement collection, implementation, and vali
 Usage:
     python -m agentscope.scripts.full_user_flow_cli \\
         -r "我要一个展示新品发布的单页网站" \\
-        --auto-confirm \\
-        --provider ollama --ollama-model qwen3:30b
+        --auto-confirm
 
 The implementation has been modularized into the following submodules:
 - _llm_utils: LLM initialization and calling utilities
@@ -27,12 +26,30 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import os
 from pathlib import Path
 from typing import Any
 
+# Load .env file for environment variables (ZHIPU_API_KEY, etc.)
+try:
+    from dotenv import load_dotenv
+    # Try to load from current directory, then from agentscope directory
+    env_paths = [
+        Path.cwd() / ".env",
+        Path(__file__).parent.parent.parent.parent / ".env",  # agentscope/.env
+    ]
+    for env_path in env_paths:
+        if env_path.exists():
+            load_dotenv(env_path)
+            break
+except ImportError:
+    pass  # dotenv not installed, rely on system environment variables
+
 # Re-export key symbols from submodules for backward compatibility
 from ._llm_utils import (
+    load_zhipu_env,
     load_siliconflow_env,
+    get_llm_provider,
     initialize_llm,
     call_llm_raw,
     call_llm_json,
@@ -56,6 +73,7 @@ from ._sandbox import (
     run_playwright_test,
     run_browser_sandbox_test,
 )
+from ._runtime_workspace import RuntimeWorkspaceWithPR
 from ._validation import (
     CodeValidationResult,
     layered_code_validation,
@@ -102,8 +120,6 @@ async def run_cli(
     scripted_inputs: list[str] | None = None,
     auto_confirm: bool = False,
     provider: str = "auto",
-    ollama_model: str = "qwen3:30b",
-    ollama_host: str = "http://localhost:11434",
     verbose: bool = False,
     user_id: str = "cli-user",
     project_id: str | None = None,
@@ -114,6 +130,12 @@ async def run_cli(
     max_rounds: int = 3,
     skip_code_validation: bool = False,
     use_collaborative_agents: bool = False,
+    use_parallel_execution: bool = False,
+    parallel_timeout: float = 300.0,
+    use_edit_mode: bool = False,
+    use_git_isolation: bool = True,
+    keep_containers: bool = False,
+    use_pr_mode: bool = True,
     log_level: str = "INFO",
     log_format: str = "text",
     log_file: str | None = None,
@@ -126,9 +148,7 @@ async def run_cli(
         initial_requirement: Initial user requirement text
         scripted_inputs: Pre-defined inputs for testing
         auto_confirm: Whether to auto-confirm without user input
-        provider: LLM provider ('auto', 'siliconflow', 'ollama')
-        ollama_model: Ollama model name
-        ollama_host: Ollama server URL
+        provider: LLM provider ('auto', 'siliconflow')
         verbose: Whether to print debug info
         user_id: User identifier
         project_id: Optional project ID
@@ -139,6 +159,8 @@ async def run_cli(
         max_rounds: Maximum execution rounds
         skip_code_validation: Whether to skip code validation
         use_collaborative_agents: Whether to use collaborative agent mode
+        use_git_isolation: Whether to use Git branch isolation
+        keep_containers: Whether to keep containers running for delivery
         log_level: Log level (DEBUG, INFO, WARN, ERROR)
         log_format: Log format (text, json, rich)
         log_file: Optional log file path
@@ -160,14 +182,8 @@ async def run_cli(
     obs_ctx.timing_tracker.start_total()
     cli_obs = get_cli_observer()
 
-    # Initialize LLM
-    silicon_creds = load_siliconflow_env()
-    llm, provider_used = initialize_llm(
-        provider,
-        silicon_creds,
-        ollama_model=ollama_model,
-        ollama_host=ollama_host,
-    )
+    # Initialize LLM (auto-detects provider based on LLM_PROVIDER env or --provider arg)
+    llm, provider_used = initialize_llm(provider)
     cli_obs.on_llm_provider(provider_used)
 
     # Collect specification
@@ -263,15 +279,41 @@ async def run_cli(
         playwright_client = None
 
     # Initialize RuntimeWorkspace (required for multi-tenant mode)
-    runtime_workspace: RuntimeWorkspace | None = None
+    # Use RuntimeWorkspaceWithPR for PR mode (delivery/ + working/ isolation)
+    runtime_workspace: RuntimeWorkspace | RuntimeWorkspaceWithPR | None = None
     try:
-        runtime_workspace = RuntimeWorkspace(
-            workspace_dir="/workspace",
-            timeout=600,
-            local_mirror_dir=workspace_dir,
-        )
+        if use_pr_mode:
+            # PR模式：使用双目录隔离
+            runtime_workspace = RuntimeWorkspaceWithPR(
+                base_workspace_dir="/workspace",
+                timeout=600,
+                image="agentscope/runtime-sandbox-claudecode:latest",
+                enable_pr_mode=True,
+            )
+            # 设置 local_mirror_dir 用于文件同步
+            runtime_workspace.local_mirror_dir = workspace_dir
+            obs_ctx.logger.info("[CLI] PR模式已启用 (delivery/ + working/ 双目录隔离)")
+        else:
+            runtime_workspace = RuntimeWorkspace(
+                workspace_dir="/workspace",
+                timeout=600,
+                local_mirror_dir=workspace_dir,
+                # Use image with Claude Code CLI pre-installed
+                image="agentscope/runtime-sandbox-claudecode:latest",
+            )
         if runtime_workspace.start():
             cli_obs.on_component_start("RuntimeWorkspace")
+            # Set container context for Claude Code execution
+            # This enables Claude Code CLI to run inside the container
+            from ._claude_code import set_container_context
+            # In PR mode, use /workspace/working as the working directory
+            # Otherwise, use /workspace directly
+            claude_workspace = "/workspace/working" if use_pr_mode else "/workspace"
+            set_container_context(
+                container_id=runtime_workspace.container_id,
+                container_workspace=claude_workspace,
+            )
+            obs_ctx.logger.info(f"[CLI] Claude Code 容器模式已启用 (container: {runtime_workspace.sandbox_id}, workspace: {claude_workspace})")
         else:
             cli_obs.on_runtime_workspace_error()
             raise RuntimeError("RuntimeWorkspace is required but failed to start")
@@ -283,8 +325,12 @@ async def run_cli(
         raise RuntimeError(f"RuntimeWorkspace is required but failed: {exc}")
 
     # Build runtime harness
+    obs_ctx.logger.debug("[CLI] 开始构建 RuntimeHarness...")
     runtime: RuntimeHarness | None = None
     try:
+        # workspace_dir for ExecutionLoop should be the HOST path
+        # (used for ProjectMemory file saving)
+        # AcceptanceAgent will get container path from runtime_workspace
         runtime = build_runtime_harness(
             spec,
             user_id=user_id,
@@ -296,9 +342,15 @@ async def run_cli(
             llm=llm,
             agent_market_dir=agent_market_dir,
             sandbox_manager=sandbox_manager,
+            playwright_mcp=playwright_client,
+            runtime_workspace=runtime_workspace,
+            workspace_dir=str(workspace_dir),  # Host path for ProjectMemory
         )
 
+        obs_ctx.logger.debug("[CLI] RuntimeHarness 构建完成")
+
         # Execute AA agent
+        obs_ctx.logger.debug("[CLI] 开始执行 AA Agent...")
         from agentscope.message import Msg
         import json
 
@@ -316,8 +368,10 @@ async def run_cli(
         )
         runtime_text = runtime_msg.get_text_content() or ""
         cli_obs.on_runtime_output("Hive Runtime (AA)", runtime_text)
+        obs_ctx.logger.debug("[CLI] AA Agent 执行完成")
 
         # Run execution
+        obs_ctx.logger.debug(f"[CLI] 开始执行 run_execution (parallel={use_parallel_execution})...")
         result = await run_execution(
             llm,
             spec,
@@ -331,7 +385,12 @@ async def run_cli(
             runtime_workspace=runtime_workspace,
             skip_code_validation=skip_code_validation,
             use_collaborative_agents=use_collaborative_agents,
+            use_parallel_execution=use_parallel_execution,  # Parallel multi-agent execution
+            parallel_timeout=parallel_timeout,  # Parallel execution timeout
             require_runtime=True,  # Multi-tenant mode: require container isolation
+            use_edit_mode=use_edit_mode,  # Claude Code style editing with CodeGuard
+            use_git_isolation=use_git_isolation,  # Git branch isolation per requirement
+            use_pr_mode=use_pr_mode,  # PR mode: delivery/ + working/ isolation
         )
 
         # Print results
@@ -375,34 +434,49 @@ async def run_cli(
             except Exception:
                 pass
 
-        if browser_sandbox:
-            try:
-                browser_sandbox.stop()
-                cli_obs.on_component_stop("BrowserSandbox")
-            except Exception:
-                pass
-        elif playwright_client and hasattr(playwright_client, "close"):
-            try:
-                await playwright_client.close()
-                cli_obs.on_component_disconnect("Playwright MCP")
-            except Exception:
-                pass
+        if keep_containers:
+            # Keep containers running for delivery verification
+            cli_obs.ctx.logger.info("[CLI] 保留容器用于交付验收")
+            if runtime_workspace:
+                container_id = getattr(runtime_workspace, "container_id", None)
+                if container_id:
+                    cli_obs.ctx.logger.info(f"[CLI] RuntimeWorkspace 容器: {container_id[:12]}")
+                    cli_obs.ctx.logger.info(f"[CLI] 进入容器: docker exec -it {container_id[:12]} bash")
+            if browser_sandbox:
+                sandbox_id = getattr(browser_sandbox, "_sandbox", None)
+                if sandbox_id:
+                    container = getattr(sandbox_id, "container_id", None)
+                    if container:
+                        cli_obs.ctx.logger.info(f"[CLI] BrowserSandbox 容器: {container[:12]}")
+        else:
+            if browser_sandbox:
+                try:
+                    browser_sandbox.stop()
+                    cli_obs.on_component_stop("BrowserSandbox")
+                except Exception:
+                    pass
+            elif playwright_client and hasattr(playwright_client, "close"):
+                try:
+                    await playwright_client.close()
+                    cli_obs.on_component_disconnect("Playwright MCP")
+                except Exception:
+                    pass
+
+            if runtime_workspace:
+                try:
+                    runtime_workspace.stop()
+                    cli_obs.on_component_stop("RuntimeWorkspace")
+                except Exception:
+                    pass
+
+            if sandbox_manager:
+                try:
+                    sandbox_manager.cleanup()
+                    cli_obs.on_component_cleanup("SandboxManager")
+                except Exception:
+                    pass
 
         await shutdown_mcp_clients(targets)
-
-        if runtime_workspace:
-            try:
-                runtime_workspace.stop()
-                cli_obs.on_component_stop("RuntimeWorkspace")
-            except Exception:
-                pass
-
-        if sandbox_manager:
-            try:
-                sandbox_manager.cleanup()
-                cli_obs.on_component_cleanup("SandboxManager")
-            except Exception:
-                pass
 
 
 def parse_auto_inputs(value: str | None) -> list[str] | None:
@@ -427,12 +501,10 @@ def main() -> None:
     parser.add_argument("--auto-confirm", dest="auto_confirm", action="store_true", help="自动确认需求")
     parser.add_argument(
         "--provider",
-        choices=["auto", "siliconflow", "ollama"],
+        choices=["auto", "zhipu-anthropic", "zhipu", "siliconflow"],
         default="auto",
-        help="选择 LLM 提供方",
+        help="选择 LLM 提供方 (zhipu-anthropic=智谱Anthropic兼容API[推荐], zhipu=智谱OpenAI兼容API, siliconflow=硅基流动)",
     )
-    parser.add_argument("--ollama-model", dest="ollama_model", default="qwen3:30b", help="Ollama 模型名称")
-    parser.add_argument("--ollama-host", dest="ollama_host", default="http://localhost:11434", help="Ollama 服务地址")
     parser.add_argument("-v", "--verbose", action="store_true", help="打印详细输出")
     parser.add_argument("-q", "--quiet", action="store_true", help="静默模式，只显示错误和最终结果")
     parser.add_argument(
@@ -491,7 +563,7 @@ def main() -> None:
         action="store_false",
         dest="mcp_advisor",
         default=True,
-        help="关闭 MCP Advisor",
+        help="禁用 MCP Advisor (用于访问 MCP 规范文档)",
     )
     parser.add_argument("--max-rounds", dest="max_rounds", type=int, default=3, help="最大轮次")
     parser.add_argument(
@@ -505,6 +577,64 @@ def main() -> None:
         action="store_true",
         dest="use_collaborative_agents",
         help="启用协作 Agent 模式",
+    )
+    parser.add_argument(
+        "--parallel",
+        action="store_true",
+        dest="use_parallel_execution",
+        default=True,
+        help="启用智能并行执行模式（默认启用，Agent 自动判断是否需要并行）",
+    )
+    parser.add_argument(
+        "--no-parallel",
+        action="store_false",
+        dest="use_parallel_execution",
+        help="禁用并行执行，强制串行处理",
+    )
+    parser.add_argument(
+        "--parallel-timeout",
+        dest="parallel_timeout",
+        type=float,
+        default=300.0,
+        help="并行执行超时时间（秒，默认 300）",
+    )
+    parser.add_argument(
+        "--edit-mode",
+        action="store_true",
+        dest="use_edit_mode",
+        help="启用编辑模式 (Claude Code 风格: 读取后编辑, 增量修改, 包含 CodeGuard 防幻觉)",
+    )
+    parser.add_argument(
+        "--git-isolation",
+        action="store_true",
+        dest="use_git_isolation",
+        default=True,
+        help="启用 Git 分支隔离 (每个需求独立分支，防止文件冲突，支持回滚，默认开启)",
+    )
+    parser.add_argument(
+        "--no-git-isolation",
+        action="store_false",
+        dest="use_git_isolation",
+        help="禁用 Git 分支隔离",
+    )
+    parser.add_argument(
+        "--keep-containers",
+        action="store_true",
+        dest="keep_containers",
+        help="保留容器用于交付验收（不清理 RuntimeWorkspace 和 BrowserSandbox）",
+    )
+    parser.add_argument(
+        "--pr-mode",
+        action="store_true",
+        dest="use_pr_mode",
+        default=True,
+        help="启用 PR 模式（双目录隔离：delivery/ + working/，QA只审阅diff，消除需求间覆盖问题，默认开启）",
+    )
+    parser.add_argument(
+        "--no-pr-mode",
+        action="store_false",
+        dest="use_pr_mode",
+        help="禁用 PR 模式",
     )
 
     args = parser.parse_args()
@@ -538,8 +668,6 @@ def main() -> None:
                 scripted,
                 args.auto_confirm,
                 provider=args.provider,
-                ollama_model=args.ollama_model,
-                ollama_host=args.ollama_host,
                 verbose=args.verbose,
                 user_id=args.user_id,
                 project_id=args.project_id,
@@ -550,6 +678,12 @@ def main() -> None:
                 max_rounds=args.max_rounds,
                 skip_code_validation=args.skip_code_validation,
                 use_collaborative_agents=args.use_collaborative_agents,
+                use_parallel_execution=args.use_parallel_execution,
+                parallel_timeout=args.parallel_timeout,
+                use_edit_mode=args.use_edit_mode,
+                use_git_isolation=args.use_git_isolation,
+                keep_containers=args.keep_containers,
+                use_pr_mode=args.use_pr_mode,
                 log_level=effective_log_level,
                 log_format=args.log_format,
                 log_file=args.log_file,

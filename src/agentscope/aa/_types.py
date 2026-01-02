@@ -24,24 +24,38 @@ def _ensure_utc(dt: datetime | None) -> datetime:
 
 @dataclass
 class StaticScoreWeights:
-    """Weight configuration for the static S_base components."""
+    """Weight configuration for the static S_base components.
 
-    performance: float = 0.4
-    brand: float = 0.2
-    recognition: float = 0.3
-    fault: float = 0.1
+    评分维度说明：
+    - performance: 性能分，需要数据积累，冷启动期使用默认值
+    - recognition: 用户认可度/评分，需要用户反馈
+    - brand_certified: 品牌认证，官方=1.0，用户上传=0.0
+    - metaso_generated: 秘塔生成，是=1.0，否=0.0
+    - fault: 故障率，1-故障率作为得分
+    """
+
+    performance: float = 0.25       # 性能分权重
+    recognition: float = 0.15       # 认可度权重
+    brand_certified: float = 0.10   # 品牌认证权重
+    metaso_generated: float = 0.05  # 秘塔生成权重
+    fault: float = 0.10             # 故障率权重（1-故障率）
+    # 注：需求符合度权重在 AAScoringConfig.requirement_weight 中 (0.35)
 
     def normalized(self) -> "StaticScoreWeights":
         """Return a normalized copy of the weights to keep the sum stable."""
 
-        total = self.performance + self.brand + self.recognition + self.fault
+        total = (
+            self.performance + self.recognition + self.brand_certified
+            + self.metaso_generated + self.fault
+        )
         if total <= 0:
             raise ValueError("Static score weights must sum to a positive value")
 
         return StaticScoreWeights(
             performance=self.performance / total,
-            brand=self.brand / total,
             recognition=self.recognition / total,
+            brand_certified=self.brand_certified / total,
+            metaso_generated=self.metaso_generated / total,
             fault=self.fault / total,
         )
 
@@ -104,22 +118,43 @@ class AgentCapabilities:
     compliance_tags: set[str] = field(default_factory=set)
     certifications: set[str] = field(default_factory=set)
     similar_cases: Sequence[str] = field(default_factory=list)
+    description: str = ""  # Agent 简介，用于需求符合度评分
 
 
 @dataclass
 class StaticScore:
-    """Static S_base components that are assigned at profile creation."""
+    """Static S_base components that are assigned at profile creation.
 
-    performance: float
-    brand: float
-    recognition: float
+    评分维度：
+    - performance: 性能分 [0,1]，默认0.5，需要数据积累
+    - recognition: 用户认可度 [0,1]，默认0.5，需要用户反馈
+    - brand_certified: 品牌认证 {0,1}，官方Agent=1.0，用户上传=0.0
+    - metaso_generated: 秘塔生成 {0,1}，秘塔生成=1.0，否则=0.0
+    - fault_impact: 累计故障影响，用于计算故障率
+    """
+
+    # 需要数据积累的分数（冷启动期使用默认值）
+    performance: float = 0.5
+    recognition: float = 0.5
+
+    # 创建时确定的静态分数
+    brand_certified: float = 0.0    # 官方=1.0, 用户上传=0.0
+    metaso_generated: float = 0.0   # 秘塔生成=1.0, 否则=0.0
+
+    # 故障相关
     fault_impact: float = 0.0
+
+    # 兼容旧代码的 brand 属性（映射到 brand_certified）
+    @property
+    def brand(self) -> float:
+        return self.brand_certified
 
     def clamp(self) -> "StaticScore":
         return StaticScore(
             performance=max(0.0, min(1.0, self.performance)),
-            brand=max(0.0, min(1.0, self.brand)),
             recognition=max(0.0, min(1.0, self.recognition)),
+            brand_certified=max(0.0, min(1.0, self.brand_certified)),
+            metaso_generated=max(0.0, min(1.0, self.metaso_generated)),
             fault_impact=max(0.0, self.fault_impact),
         )
 
@@ -129,6 +164,12 @@ class AgentProfile:
     """Full profile describing an available Agent candidate.
 
     Agent selection is based on `capabilities` matching (skills, tools, domains, etc.).
+
+    冷启动机制：
+    - 新创建的 Agent 性能分和故障率没有数据
+    - 前 cold_start_threshold 次任务为冷启动期
+    - 冷启动期给予补偿分，让新 Agent 有机会被选中
+    - 达到阈值后退出冷启动，使用真实的性能数据
     """
 
     agent_id: str
@@ -144,7 +185,7 @@ class AgentProfile:
     s_base: float | None = None
     # Cold start learning fields
     task_count: int = 0
-    cold_start_threshold: int = 5
+    cold_start_threshold: int = 10  # 前10次为冷启动期（从5提高到10）
     learning_rate: float = 0.1
 
     def update_after_task(
@@ -185,10 +226,12 @@ class AgentProfile:
                 + self.learning_rate * user_rating
             )
 
+        # Preserve static fields (brand_certified, metaso_generated)
         self.static_score = StaticScore(
             performance=new_performance,
-            brand=current.brand,  # Brand is manually controlled, never auto-update
             recognition=new_recognition,
+            brand_certified=current.brand_certified,
+            metaso_generated=current.metaso_generated,
             fault_impact=new_fault_impact,
         )
 
@@ -207,7 +250,15 @@ class AgentProfile:
         severity_weights: dict[SeverityLevel, float],
         now: datetime | None = None,
     ) -> float:
-        """Compute (or recompute) the static base score."""
+        """Compute (or recompute) the static base score.
+
+        S_base = Σ(权重 × 分数)，包含以下维度：
+        - performance: 性能分（需要数据积累）
+        - recognition: 用户认可度（需要用户反馈）
+        - brand_certified: 品牌认证（官方=1，用户=0）
+        - metaso_generated: 秘塔生成（是=1，否=0）
+        - fault: 1 - 故障率
+        """
 
         weights = self.base_weights.normalized()
         score = self.static_score.clamp()
@@ -215,8 +266,9 @@ class AgentProfile:
         fault_component = max(0.0, 1.0 - fault_penalty)
         s_base = (
             weights.performance * score.performance
-            + weights.brand * score.brand
             + weights.recognition * score.recognition
+            + weights.brand_certified * score.brand_certified
+            + weights.metaso_generated * score.metaso_generated
             + weights.fault * fault_component
         )
         self.s_base = s_base
@@ -287,13 +339,26 @@ class CandidateRanking:
 
 @dataclass
 class AAScoringConfig:
-    """Global configuration for AA selection and scoring."""
+    """Global configuration for AA selection and scoring.
+
+    评分公式：
+    combined = S_base + (requirement_fit × requirement_weight) + 冷启动补偿
+
+    冷启动机制：
+    - 新 Agent 的性能分和故障率没有数据，需要冷启动补偿
+    - cold_start_bonus: 冷启动期的分数补偿
+    - cold_start_quota: 每轮最多允许的冷启动 Agent 数量
+    - 冷启动期结束后（达到任务数阈值），使用真实性能数据
+    """
 
     top_n: int = 20  # Ensure all candidates including spawned ones are evaluated
-    requirement_weight: float = 0.35
-    cold_start_bonus: float = 0.05
-    cold_start_quota: int = 1
-    cold_start_overflow_penalty: float = 0.1
+    requirement_weight: float = 0.35  # 需求符合度权重
+
+    # 冷启动配置（增强版）
+    cold_start_bonus: float = 0.15       # 冷启动补偿分（从0.05提高到0.15）
+    cold_start_quota: int = 5            # 每轮最多5个冷启动Agent（从1提高到5）
+    cold_start_overflow_penalty: float = 0.0  # 超出配额不惩罚（从0.1改为0）
+
     severity_weights: dict[SeverityLevel, float] = field(
         default_factory=lambda: {
             "critical": 1.0,
@@ -304,17 +369,18 @@ class AAScoringConfig:
     )
     default_requirement_weights: dict[str, float] = field(
         default_factory=lambda: {
-            "skills": 0.35,
-            "tools": 0.2,
+            "skills": 0.30,
+            "tools": 0.15,
             "domains": 0.15,
-            "languages": 0.1,
-            "regions": 0.1,
-            "compliance_tags": 0.1,
+            "languages": 0.10,
+            "regions": 0.05,
+            "compliance_tags": 0.05,
+            "description": 0.20,  # Agent简介与需求描述的匹配度
         },
     )
     tolerance: float = 1e-6
     log_round_limit: int = 20
-    min_fit_threshold: float = 0.3  # Minimum requirement fit score to accept a match
+    min_fit_threshold: float = 0.10  # 最低需求符合度阈值（从0.3降到0.1）
 
 
 @dataclass

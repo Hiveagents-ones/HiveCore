@@ -706,6 +706,103 @@ class ObservabilityContext:
 
 
 # ---------------------------------------------------------------------------
+# Hub Integration (for webhook support)
+# ---------------------------------------------------------------------------
+def _get_hub() -> "ObservabilityHub | None":
+    """Get the ObservabilityHub singleton if available.
+
+    Returns:
+        ObservabilityHub | None: Hub instance or None if import fails.
+    """
+    try:
+        from agentscope.observability import ObservabilityHub
+
+        return ObservabilityHub()
+    except ImportError:
+        return None
+
+
+def _record_timeline_event(
+    event_type: str,
+    project_id: str | None = None,
+    agent_id: str | None = None,
+    node_id: str | None = None,
+    **metadata: Any,
+) -> None:
+    """Record a timeline event to ObservabilityHub.
+
+    This function is called by Observer classes to push events
+    to the webhook when configured.
+
+    Args:
+        event_type: Type of event (agent_start, agent_end, etc.)
+        project_id: Project ID if available
+        agent_id: Agent ID if available
+        node_id: Task node ID if available
+        **metadata: Additional event metadata
+    """
+    hub = _get_hub()
+    if hub is None or hub._webhook is None:
+        return
+
+    try:
+        from agentscope.observability import TimelineEvent
+
+        event = TimelineEvent(
+            timestamp=datetime.now(),
+            event_type=event_type,  # type: ignore
+            project_id=project_id,
+            agent_id=agent_id,
+            node_id=node_id,
+            metadata=metadata,
+        )
+        hub.record_timeline_event(event)
+    except Exception:
+        pass  # Silently ignore errors to not disrupt execution
+
+
+def _record_usage(
+    agent_id: str,
+    agent_name: str,
+    model_name: str,
+    input_tokens: int,
+    output_tokens: int,
+    duration_ms: float,
+    project_id: str | None = None,
+) -> None:
+    """Record token usage to ObservabilityHub.
+
+    Args:
+        agent_id: Agent identifier
+        agent_name: Human-readable agent name
+        model_name: Model name
+        input_tokens: Number of input tokens
+        output_tokens: Number of output tokens
+        duration_ms: Duration in milliseconds
+        project_id: Project ID if available
+    """
+    hub = _get_hub()
+    if hub is None or hub._webhook is None:
+        return
+
+    try:
+        from agentscope.observability import UsageCollector
+
+        collector = UsageCollector(hub)
+        collector.collect_raw(
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            duration_seconds=duration_ms / 1000.0,
+            agent_id=agent_id,
+            agent_name=agent_name,
+            model_name=model_name,
+            project_id=project_id,
+        )
+    except Exception:
+        pass  # Silently ignore errors
+
+
+# ---------------------------------------------------------------------------
 # Convenience Functions
 # ---------------------------------------------------------------------------
 def get_context() -> ObservabilityContext:
@@ -800,6 +897,8 @@ class LLMObserver:
         prompt_tokens: int,
         completion_tokens: int,
         response_length: int,
+        model_name: str = "unknown",
+        project_id: str | None = None,
     ) -> None:
         """Called when LLM call succeeds.
 
@@ -809,12 +908,25 @@ class LLMObserver:
             prompt_tokens: Number of input tokens
             completion_tokens: Number of output tokens
             response_length: Length of response text
+            model_name: Model name used for this call
+            project_id: Project ID if available
         """
         duration = time.perf_counter() - start_time
         total_tokens = prompt_tokens + completion_tokens
 
         # Track in context
         self.ctx.track_llm_call(label, prompt_tokens, completion_tokens, duration)
+
+        # Record to ObservabilityHub for webhook
+        _record_usage(
+            agent_id=label,
+            agent_name=label,
+            model_name=model_name,
+            input_tokens=prompt_tokens,
+            output_tokens=completion_tokens,
+            duration_ms=duration * 1000,
+            project_id=project_id,
+        )
 
         # Log success
         if total_tokens > 0:
@@ -899,12 +1011,18 @@ class ExecutionObserver:
         self.ctx.logger.info(f"开始执行: {total_requirements} 个需求, 最多 {max_rounds} 轮")
         self.ctx.logger.info(f"{'=' * 60}")
 
-    def on_round_start(self, round_idx: int, pending_count: int) -> None:
+    def on_round_start(
+        self,
+        round_idx: int,
+        pending_count: int,
+        project_id: str | None = None,
+    ) -> None:
         """Called when a round starts.
 
         Args:
             round_idx: Round number (1-indexed)
             pending_count: Number of pending requirements
+            project_id: Project ID if available
         """
         self._round_start = time.perf_counter()
         self._current_round = round_idx
@@ -912,12 +1030,27 @@ class ExecutionObserver:
         self.ctx.logger.info(f"执行轮次 Round {round_idx} ({pending_count} 个需求待处理)")
         self.ctx.logger.info(f"{'─' * 40}")
 
-    def on_requirement_start(self, req_id: str, title: str) -> None:
+        # Record timeline event
+        _record_timeline_event(
+            event_type="task_status",
+            project_id=project_id,
+            message=f"Round {round_idx} started",
+            round_index=round_idx,
+            pending_count=pending_count,
+        )
+
+    def on_requirement_start(
+        self,
+        req_id: str,
+        title: str,
+        project_id: str | None = None,
+    ) -> None:
         """Called when requirement processing starts.
 
         Args:
             req_id: Requirement ID
             title: Requirement title
+            project_id: Project ID if available
         """
         self._req_start = time.perf_counter()
         self._current_req = req_id
@@ -926,6 +1059,15 @@ class ExecutionObserver:
         # Truncate long titles
         display_title = title[:50] + "..." if len(title) > 50 else title
         self.ctx.logger.info(f"\n[{req_id}] ▶ {display_title}")
+
+        # Record timeline event
+        _record_timeline_event(
+            event_type="agent_start",
+            project_id=project_id,
+            node_id=req_id,
+            message=f"Processing requirement: {title[:100]}",
+            title=title,
+        )
 
     def on_requirement_skip(self, req_id: str, reason: str) -> None:
         """Called when requirement is skipped.
@@ -987,6 +1129,7 @@ class ExecutionObserver:
         req_id: str,
         passed: bool,
         scores: dict[str, float],
+        project_id: str | None = None,
     ) -> None:
         """Called when requirement processing completes.
 
@@ -994,6 +1137,7 @@ class ExecutionObserver:
             req_id: Requirement ID
             passed: Whether requirement passed
             scores: Score breakdown by category
+            project_id: Project ID if available
         """
         duration = time.perf_counter() - self._req_start
         status = "✓ 通过" if passed else "✗ 未通过"
@@ -1006,8 +1150,39 @@ class ExecutionObserver:
             f"[{req_id}] ◀ {status}{score_str} ({duration:.1f}s)"
         )
 
+        # Record timeline event
+        _record_timeline_event(
+            event_type="agent_end",
+            project_id=project_id,
+            node_id=req_id,
+            message=f"Requirement {'passed' if passed else 'failed'}",
+            passed=passed,
+            scores=scores,
+            duration_ms=duration * 1000,
+        )
+
         self._current_req = None
         self.ctx.set_requirement(None)
+
+    def on_round_end(
+        self,
+        round_idx: int,
+        passed_count: int,
+        total_count: int,
+    ) -> None:
+        """Called when a round ends (parallel mode).
+
+        Args:
+            round_idx: Round number
+            passed_count: Number of passed requirements
+            total_count: Total number of requirements
+        """
+        duration = time.perf_counter() - self._round_start
+        self.ctx.logger.info(f"\n--- Round {round_idx} 完成 ({duration:.1f}s) ---")
+        self.ctx.logger.info(f"通过: {passed_count}/{total_count}")
+
+        if passed_count < total_count:
+            self.ctx.logger.info(f"待重试: {total_count - passed_count} 个需求")
 
     def on_round_complete(
         self,
@@ -1102,6 +1277,21 @@ class ExecutionObserver:
             endpoint_count: Number of API endpoints defined
         """
         self.ctx.logger.info(f"[ARCH] 架构契约已生成，包含 {endpoint_count} 个 API 端点")
+
+    def on_skeleton_start(self) -> None:
+        """Called when unified skeleton generation starts."""
+        self.ctx.logger.info("\n---- 生成统一代码骨架 ----")
+
+    def on_skeleton_complete(self, file_count: int, shared_count: int) -> None:
+        """Called when skeleton generation completes.
+
+        Args:
+            file_count: Number of skeleton files generated
+            shared_count: Number of files shared by multiple requirements
+        """
+        self.ctx.logger.info(
+            f"[SKELETON] 生成了 {file_count} 个骨架文件 ({shared_count} 个共享模块)"
+        )
 
     # -------------------------------------------------------------------------
     # Implementation Events
@@ -1261,7 +1451,7 @@ class ExecutionObserver:
             req_id: Requirement ID
             error: Error description
         """
-        self.ctx.logger.debug(f"[{req_id}]   - {error}")
+        self.ctx.logger.info(f"[{req_id}]   ❌ {error}")
 
     # -------------------------------------------------------------------------
     # Regression Detection Events
@@ -1668,17 +1858,32 @@ class CLIObserver:
         """Called before listing deliverables."""
         self.ctx.logger.info("\n========== 最终交付 ==========")
 
-    def on_deliverable(self, req_id: str, path: str | None) -> None:
+    def on_deliverable(
+        self,
+        req_id: str,
+        path: str | None,
+        project_id: str | None = None,
+    ) -> None:
         """Called for each deliverable.
 
         Args:
             req_id: Requirement ID
             path: File path or None
+            project_id: Project ID if available
         """
         if path:
             self.ctx.logger.info(f"- {req_id}: file://{path}")
         else:
             self.ctx.logger.info(f"- {req_id}: (无交付文件)")
+
+        # Record timeline event for deliverable
+        _record_timeline_event(
+            event_type="task_status",
+            project_id=project_id,
+            node_id=req_id,
+            message=f"Deliverable {'ready' if path else 'missing'}",
+            deliverable_path=path,
+        )
 
     def on_acceptance_header(self) -> None:
         """Called before listing acceptance results."""
@@ -1741,6 +1946,189 @@ class CLIObserver:
         self.ctx.logger.warn(f"[CLI] 忽略无效 MCP 参数 '{param}': {error}")
 
 
+class AgentReActObserver:
+    """Observer for Agent ReAct loop execution.
+
+    Provides detailed logging for agent's thinking, tool calls, and task board updates.
+    """
+
+    def __init__(self, ctx: ObservabilityContext | None = None):
+        """Initialize AgentReActObserver.
+
+        Args:
+            ctx: Observability context (uses global if None)
+        """
+        self._ctx = ctx
+        self._current_agent: str | None = None
+        self._current_task: str | None = None
+
+    @property
+    def ctx(self) -> ObservabilityContext:
+        """Get observability context."""
+        return self._ctx or get_context()
+
+    # -------------------------------------------------------------------------
+    # ReAct Loop Events
+    # -------------------------------------------------------------------------
+    def on_react_start(self, agent_id: str, task_id: str, query: str) -> None:
+        """Called when ReAct loop starts.
+
+        Args:
+            agent_id: Agent identifier
+            task_id: Task/requirement ID
+            query: User query or task description
+        """
+        self._current_agent = agent_id
+        self._current_task = task_id
+        query_preview = query[:100] + "..." if len(query) > 100 else query
+        self.ctx.logger.info(f"\n[{agent_id}] ▶ 开始处理任务 {task_id}")
+        self.ctx.logger.debug(f"[{agent_id}]   查询: {query_preview}")
+
+    def on_thinking(self, agent_id: str, thought: str) -> None:
+        """Called when agent produces thinking/reasoning.
+
+        Args:
+            agent_id: Agent identifier
+            thought: Agent's thinking content
+        """
+        thought_preview = thought[:120] + "..." if len(thought) > 120 else thought
+        # Clean up thought for display
+        thought_clean = thought_preview.replace("\n", " ").strip()
+        if thought_clean:
+            self.ctx.logger.info(f"[{agent_id}]   💭 {thought_clean}")
+
+    def on_tool_call_start(self, agent_id: str, tool_name: str, tool_input: dict) -> None:
+        """Called when tool call starts.
+
+        Args:
+            agent_id: Agent identifier
+            tool_name: Name of the tool being called
+            tool_input: Tool input parameters
+        """
+        # Format tool input for display
+        if tool_name == "claude_code_edit":
+            prompt = tool_input.get("prompt", "")[:80]
+            self.ctx.logger.info(f"[{agent_id}]   🔧 {tool_name}: {prompt}...")
+        else:
+            input_preview = str(tool_input)[:60]
+            self.ctx.logger.info(f"[{agent_id}]   🔧 {tool_name}({input_preview}...)")
+
+    def on_tool_call_end(
+        self,
+        agent_id: str,
+        tool_name: str,
+        result: str,
+        success: bool,
+        duration: float = 0.0,
+    ) -> None:
+        """Called when tool call completes.
+
+        Args:
+            agent_id: Agent identifier
+            tool_name: Name of the tool
+            result: Tool execution result
+            success: Whether tool call succeeded
+            duration: Execution duration in seconds
+        """
+        status = "✓" if success else "✗"
+        result_preview = result[:80] + "..." if len(result) > 80 else result
+        result_clean = result_preview.replace("\n", " ").strip()
+
+        duration_str = f" ({duration:.1f}s)" if duration > 0 else ""
+        self.ctx.logger.info(f"[{agent_id}]   {status} {tool_name}{duration_str}: {result_clean}")
+
+    def on_iteration(self, agent_id: str, iteration: int, max_iters: int) -> None:
+        """Called at each ReAct iteration.
+
+        Args:
+            agent_id: Agent identifier
+            iteration: Current iteration number (1-indexed)
+            max_iters: Maximum iterations allowed
+        """
+        self.ctx.logger.debug(f"[{agent_id}]   ⟳ 迭代 {iteration}/{max_iters}")
+
+    def on_react_complete(
+        self,
+        agent_id: str,
+        task_id: str,
+        success: bool,
+        summary: str,
+        iterations: int = 0,
+    ) -> None:
+        """Called when ReAct loop completes.
+
+        Args:
+            agent_id: Agent identifier
+            task_id: Task/requirement ID
+            success: Whether task completed successfully
+            summary: Summary of the result
+            iterations: Number of iterations used
+        """
+        status = "✓ 完成" if success else "✗ 失败"
+        summary_preview = summary[:100] + "..." if len(summary) > 100 else summary
+        summary_clean = summary_preview.replace("\n", " ").strip()
+
+        iter_str = f" ({iterations} 次迭代)" if iterations > 0 else ""
+        self.ctx.logger.info(f"[{agent_id}] ◀ {status}{iter_str}")
+        if summary_clean:
+            self.ctx.logger.info(f"[{agent_id}]   结果: {summary_clean}")
+
+        self._current_agent = None
+        self._current_task = None
+
+    # -------------------------------------------------------------------------
+    # Task Board Events
+    # -------------------------------------------------------------------------
+    def on_task_board_update(self, agent_id: str, tasks: list[dict]) -> None:
+        """Called when agent's task board is updated.
+
+        Args:
+            agent_id: Agent identifier
+            tasks: List of task dictionaries with 'content' and 'status' keys
+        """
+        if not tasks:
+            return
+
+        self.ctx.logger.info(f"[{agent_id}]   📋 任务板 ({len(tasks)} 个任务):")
+        status_icons = {
+            "pending": "○",
+            "in_progress": "◐",
+            "completed": "●",
+        }
+        for task in tasks[:5]:
+            status = task.get("status", "pending")
+            icon = status_icons.get(status, "?")
+            content = task.get("content", "")[:50]
+            self.ctx.logger.info(f"[{agent_id}]     {icon} {content}")
+        if len(tasks) > 5:
+            self.ctx.logger.info(f"[{agent_id}]     ... 及其他 {len(tasks) - 5} 个任务")
+
+    # -------------------------------------------------------------------------
+    # Error Events
+    # -------------------------------------------------------------------------
+    def on_error(self, agent_id: str, error: Exception, context: str = "") -> None:
+        """Called when an error occurs during ReAct execution.
+
+        Args:
+            agent_id: Agent identifier
+            error: The exception that occurred
+            context: Additional context about where the error occurred
+        """
+        ctx_str = f" ({context})" if context else ""
+        self.ctx.logger.error(f"[{agent_id}]   ❌ 错误{ctx_str}: {error}")
+
+    def on_fallback(self, agent_id: str, reason: str, fallback_action: str) -> None:
+        """Called when agent falls back to alternative strategy.
+
+        Args:
+            agent_id: Agent identifier
+            reason: Reason for fallback
+            fallback_action: Description of fallback action
+        """
+        self.ctx.logger.warn(f"[{agent_id}]   ⚠ 回退: {reason}")
+        self.ctx.logger.info(f"[{agent_id}]   → {fallback_action}")
+
+
 # ---------------------------------------------------------------------------
 # Observer Factories
 # ---------------------------------------------------------------------------
@@ -1780,6 +2168,104 @@ def get_cli_observer() -> CLIObserver:
     return CLIObserver()
 
 
+def get_agent_react_observer() -> AgentReActObserver:
+    """Get agent ReAct observer using global context.
+
+    Returns:
+        AgentReActObserver: Observer instance
+    """
+    return AgentReActObserver()
+
+
+class ClaudeCodeObserver:
+    """Observer for Claude Code execution.
+
+    Provides real-time logging during Claude Code CLI execution.
+    """
+
+    def __init__(self, ctx: ObservabilityContext | None = None):
+        """Initialize ClaudeCodeObserver.
+
+        Args:
+            ctx: Observability context (uses global if None)
+        """
+        self._ctx = ctx
+        self._current_agent: str | None = None
+        self._message_count: int = 0
+
+    @property
+    def ctx(self) -> ObservabilityContext:
+        """Get observability context."""
+        return self._ctx or get_context()
+
+    def set_agent(self, agent_id: str) -> None:
+        """Set current agent for logging context.
+
+        Args:
+            agent_id: Agent identifier
+        """
+        self._current_agent = agent_id
+        self._message_count = 0
+
+    def on_progress(self, msg: dict) -> None:
+        """Called for each stream-json message from Claude Code.
+
+        Args:
+            msg: JSON message from Claude Code CLI
+        """
+        self._message_count += 1
+        msg_type = msg.get("type", "")
+        agent_prefix = f"[{self._current_agent}]" if self._current_agent else "[ClaudeCode]"
+
+        if msg_type == "assistant":
+            # Assistant thinking/response
+            content = msg.get("message", {}).get("content", [])
+            for block in content:
+                if isinstance(block, dict):
+                    if block.get("type") == "text":
+                        text = block.get("text", "")[:100]
+                        if text:
+                            self.ctx.logger.info(f"{agent_prefix}     📝 {text}...")
+                    elif block.get("type") == "tool_use":
+                        tool_name = block.get("name", "unknown")
+                        self.ctx.logger.info(f"{agent_prefix}     🛠️ 调用工具: {tool_name}")
+
+        elif msg_type == "user":
+            # Tool results from Claude Code
+            content = msg.get("message", {}).get("content", [])
+            for block in content:
+                if isinstance(block, dict) and block.get("type") == "tool_result":
+                    tool_id = block.get("tool_use_id", "")[:8]
+                    self.ctx.logger.debug(f"{agent_prefix}     ← 工具结果 ({tool_id})")
+
+        elif msg_type == "system":
+            # System messages
+            subtype = msg.get("subtype", "")
+            if subtype == "init":
+                cwd = msg.get("cwd", "")
+                self.ctx.logger.debug(f"{agent_prefix}     📂 工作目录: {cwd}")
+            elif subtype:
+                self.ctx.logger.debug(f"{agent_prefix}     ⚙️ {subtype}")
+
+        elif msg_type == "result":
+            # Final result
+            result_text = msg.get("result", "")[:80]
+            is_error = msg.get("is_error", False)
+            if is_error:
+                self.ctx.logger.info(f"{agent_prefix}     ❌ 错误: {result_text}")
+            else:
+                self.ctx.logger.info(f"{agent_prefix}     ✅ 完成 (共 {self._message_count} 条消息)")
+
+
+def get_claude_code_observer() -> ClaudeCodeObserver:
+    """Get Claude Code observer using global context.
+
+    Returns:
+        ClaudeCodeObserver: Observer instance
+    """
+    return ClaudeCodeObserver()
+
+
 __all__ = [
     "LogLevel",
     "ObservabilityConfig",
@@ -1797,8 +2283,12 @@ __all__ = [
     "ExecutionObserver",
     "QAObserver",
     "CLIObserver",
+    "AgentReActObserver",
+    "ClaudeCodeObserver",
     "get_llm_observer",
     "get_execution_observer",
     "get_qa_observer",
     "get_cli_observer",
+    "get_agent_react_observer",
+    "get_claude_code_observer",
 ]

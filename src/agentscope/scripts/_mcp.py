@@ -134,12 +134,13 @@ async def initialize_mcp_clients(
             get_logger().warn(f"[MCP] Playwright MCP 连接失败: {exc}")
 
     # MCP Advisor (AA side)
+    # See: https://mcpservers.org/servers/olaservo/mcp-advisor
     if enable_advisor:
         try:
             advisor_client = StdIOStatefulClient(
                 name="mcp-advisor",
                 command="npx",
-                args=["-y", "@anthropic-ai/mcp-advisor"],
+                args=["-y", "mcp-advisor@latest"],
             )
             await advisor_client.connect()
             aa_clients.append(advisor_client)

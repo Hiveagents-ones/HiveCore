@@ -431,7 +431,7 @@ class CollaborativeExecution:
                         text=f"""请生成后端代码，严格遵循架构契约。
 
 需要生成的后端文件：
-{chr(10).join([f"- {f.get('path', '')}" for f in blueprint.get("files_plan", []) if f.get('path', '').startswith('backend')][:5]) if blueprint else '- backend/app/main.py\n- backend/app/routers/\n- backend/app/models.py'}
+{chr(10).join([f"- {f.get('path', '')}" for f in blueprint.get("files_plan", []) if f.get('path', '').startswith('backend')][:5]) if blueprint else ('- backend/app/main.py' + chr(10) + '- backend/app/routers/' + chr(10) + '- backend/app/models.py')}
 
 输出 JSON 格式，包含完整代码。""",
                     )],
@@ -462,7 +462,7 @@ class CollaborativeExecution:
 {self._summarize_backend_apis(backend_text)}
 
 需要生成的前端文件：
-{chr(10).join([f"- {f.get('path', '')}" for f in blueprint.get("files_plan", []) if f.get('path', '').startswith('frontend')][:5]) if blueprint else '- frontend/src/api/\n- frontend/src/views/\n- frontend/src/router/'}
+{chr(10).join([f"- {f.get('path', '')}" for f in blueprint.get("files_plan", []) if f.get('path', '').startswith('frontend')][:5]) if blueprint else ('- frontend/src/api/' + chr(10) + '- frontend/src/views/' + chr(10) + '- frontend/src/router/')}
 
 确保前端调用的 API 路径与后端一致。输出 JSON 格式。""",
                     )],

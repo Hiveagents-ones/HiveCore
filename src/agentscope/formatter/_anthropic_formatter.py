@@ -99,9 +99,18 @@ class AnthropicChatFormatter(TruncatedFormatterBase):
                         typ,
                     )
 
-            # Claude only allow the first message to be system message
-            if msg.role == "system" and index != 0:
+            # For Zhipu Anthropic-compatible API, system role is not allowed
+            # Convert all system messages to user messages with a prefix
+            if msg.role == "system":
                 role = "user"
+                # Prepend system instruction marker to the first text block
+                if content_blocks:
+                    for block in content_blocks:
+                        if block.get("type") == "text":
+                            block["text"] = (
+                                "[System Instruction]\n" + block["text"]
+                            )
+                            break
             else:
                 role = msg.role
 

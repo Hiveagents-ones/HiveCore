@@ -316,6 +316,10 @@ def build_runtime_harness(
     llm: Any = None,
     agent_market_dir: str | None = None,
     sandbox_manager: Any = None,
+    playwright_mcp: Any = None,
+    runtime_workspace: Any = None,
+    workspace_dir: str = "/workspace",
+    http_port: int | None = None,
 ) -> RuntimeHarness:
     """Build a RuntimeHarness from specification.
 
@@ -330,6 +334,10 @@ def build_runtime_harness(
         llm: LLM model instance
         agent_market_dir: Path to agent market directory
         sandbox_manager: Sandbox manager instance
+        playwright_mcp: Playwright MCP client (BrowserSandboxManager or StatefulClientBase)
+        runtime_workspace: RuntimeWorkspace instance for Docker execution
+        workspace_dir: Workspace directory path
+        http_port: HTTP server port for browser testing
 
     Returns:
         RuntimeHarness: Configured runtime harness
@@ -346,22 +354,45 @@ def build_runtime_harness(
 
     # Helper to convert dict to AgentProfile
     def _dict_to_profile(agent_id: str, info: dict[str, Any]) -> AgentProfile:
-        """Convert dict profile to AgentProfile object."""
+        """Convert dict profile to AgentProfile object.
+
+        官方 Agent（来自 agent_market）设置：
+        - brand_certified=1.0（官方认证）
+        - metaso_generated=0.0（非秘塔生成）
+        - is_cold_start=False（官方 Agent 不需要冷启动）
+        """
+        from agentscope.aa._vocabulary import normalize_skills, normalize_domains
+
         base_score = info.get("base_score", 0.75)
         capabilities = info.get("capabilities", [])
+        description = info.get("description", "")
+        name = info.get("name", agent_id)
+
+        # Normalize skills and domains for consistent matching
+        cap_set = normalize_skills(capabilities)
+        raw_domains = {info.get("role", "general")}
+        domains = normalize_domains(raw_domains | cap_set)
+
+        # Generate description if not provided
+        if not description:
+            description = f"{name}: {', '.join(cap_set) if cap_set else '通用技能'}"
         return AgentProfile(
             agent_id=agent_id,
-            name=info.get("name", agent_id),
+            name=name,
             static_score=StaticScore(
                 performance=base_score,
-                brand=0.5,
                 recognition=0.5,
+                brand_certified=1.0,   # 官方 Agent 品牌认证
+                metaso_generated=0.0,  # 非秘塔生成
             ),
             capabilities=AgentCapabilities(
-                skills=set(capabilities),
-                domains=set([info.get("role", "general")]),
+                skills=cap_set,
+                domains=domains,
+                languages={"zh", "en"},  # Default languages for better matching
+                description=description,
             ),
-            metadata={"description": info.get("description", "")},
+            is_cold_start=False,  # 官方 Agent 不需要冷启动
+            metadata={"description": description},
         )
 
     # Load agent profiles
@@ -391,15 +422,70 @@ def build_runtime_harness(
     task_graph_builder = TaskGraphBuilder(fallback_agent_id="default-agent")
     kpi_tracker = KPITracker(target_reduction=0.9)
 
-    # Create orchestrator
+    # Create spawn factory for dynamic agent creation
+    from agentscope.ones import spawn_modular_agent
+    from pathlib import Path
+
+    # Setup agent persistence directory
+    agents_persist_dir = str(Path(workspace_dir).parent / "agents") if workspace_dir else None
+
+    def _spawn_factory(requirement: Any, utterance: str) -> tuple[Any, Any]:
+        """Factory to spawn modular agents when no suitable candidate exists."""
+        return spawn_modular_agent(
+            requirement=requirement,
+            utterance=utterance,
+            llm=llm,
+            mcp_clients=mcp_clients,
+            with_file_tools=True,
+            persist_to=agents_persist_dir,
+        )
+
+    # Create orchestrator with spawn factory
+    # enable_multi_agent=True by default, enabling LLM-driven team selection
     orchestrator = AssistantOrchestrator(
         system_registry=system_registry,
         scoring_config=None,
-        spawn_factory=None,
+        spawn_factory=_spawn_factory if llm is not None else None,
+        enable_multi_agent=True,  # Enable multi-agent team selection
     )
 
-    # Register agent profiles as candidates
-    orchestrator.register_candidates(agent_profiles)
+    # Set LLM model for team role analysis (Phase 1)
+    # AA scoring is used for agent selection (Phase 2)
+    if llm is not None:
+        orchestrator.set_team_selector_model(llm)
+
+    # Set runtime_workspace for collaborative execution
+    if runtime_workspace is not None:
+        orchestrator._workspace = runtime_workspace
+
+    # Load previously created agents from registry (for session continuity)
+    registry_path = None
+    if agents_persist_dir:
+        from pathlib import Path
+        registry_path = str(Path(agents_persist_dir) / "registry.json")
+    loaded_count = orchestrator.load_from_registry(registry_path)
+    if loaded_count > 0:
+        from ._observability import get_logger
+        get_logger().info(f"[Runtime] Loaded {loaded_count} agents from registry")
+
+    # NOTE: We no longer register builtin agent profiles as candidates.
+    # All agents are now created via spawn_factory (spawn_modular_agent),
+    # which calls Metaso to populate the knowledge base.
+    # This ensures every agent has relevant domain knowledge.
+    #
+    # orchestrator.register_candidates(agent_profiles)  # Disabled
+
+    # Create AcceptanceAgent if LLM is available
+    acceptance_agent = None
+    if llm is not None:
+        from agentscope.ones.acceptance_agent import AcceptanceAgent
+        acceptance_agent = AcceptanceAgent(
+            model=llm,
+            sandbox_orchestrator=sandbox_manager,
+            runtime_workspace=runtime_workspace,
+            playwright_mcp=playwright_mcp,
+            http_port=http_port,
+        )
 
     # Create execution loop
     execution_loop = ExecutionLoop(
@@ -410,6 +496,8 @@ def build_runtime_harness(
         task_graph_builder=task_graph_builder,
         kpi_tracker=kpi_tracker,
         max_rounds=3,
+        acceptance_agent=acceptance_agent,
+        workspace_dir=workspace_dir,
     )
 
     # Create requirement resolver
@@ -420,13 +508,20 @@ def build_runtime_harness(
             rid = req.get("id", "")
             tags = set(req.get("tags", []))
             # Map tags to skills/domains for agent matching
+            # Skills get weight 0.35, domains get 0.15, so we need both for good scores
             skills = set()
             domains = set()
+            domain_tags = {"frontend", "backend", "database", "testing", "design"}
             for tag in tags:
-                if tag in ("frontend", "backend", "database", "testing", "design"):
+                if tag in domain_tags:
                     domains.add(tag)
+                    # Also add to skills for better matching score
+                    skills.add(tag)
                 else:
                     skills.add(tag)
+            # Ensure at least one skill for matching
+            if not skills and domains:
+                skills = domains.copy()
             requirements[rid] = Requirement(
                 skills=skills,
                 domains=domains,

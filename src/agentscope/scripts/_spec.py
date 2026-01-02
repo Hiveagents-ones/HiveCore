@@ -61,7 +61,12 @@ def print_requirements(requirements: list[dict[str, Any]]) -> None:
         rid = req.get("id", f"REQ-{i}")
         title = req.get("title", req.get("summary", "未命名"))
         category = req.get("category", "通用")
-        logger.info(f"  [{rid}] {title} ({category})")
+        depends_on = req.get("depends_on", [])
+        if depends_on:
+            deps_str = ", ".join(depends_on) if isinstance(depends_on, list) else depends_on
+            logger.info(f"  [{rid}] {title} ({category}) <- 依赖: {deps_str}")
+        else:
+            logger.info(f"  [{rid}] {title} ({category})")
     logger.info("")
 
 
@@ -108,8 +113,12 @@ async def collect_spec(
                     "title": "需求标题",
                     "summary": "详细描述",
                     "category": "frontend|backend|database|ui|api|other",
-                    "priority": "high|medium|low"
+                    "priority": "high|medium|low",
+                    "depends_on": ["REQ-XXX"]
                 }}
+            ],
+            "dependency_edges": [
+                ["REQ-001", "REQ-002"]
             ],
             "tech_stack": {{
                 "frontend": "推荐的前端技术",
@@ -124,6 +133,12 @@ async def collect_spec(
         2. 需求粒度适中，不要过于宏观或过于细节
         3. 如果需求不清晰，列出需要澄清的问题
         4. 根据需求类型推荐合适的技术栈
+        5. **重要**: 分析需求之间的依赖关系，按正确的开发顺序排列：
+           - 数据库设计 → API设计 → 后端实现 → 前端设计 → 前端实现
+           - UI/UX设计 应在 前端实现 之前
+           - 基础功能（如登录注册）应在 业务功能 之前
+        6. dependency_edges 格式: [[前置需求ID, 依赖需求ID], ...]
+           表示"依赖需求"必须在"前置需求"完成后才能开始
     """)
 
     if verbose:
@@ -144,6 +159,31 @@ async def collect_spec(
     # Ensure requirements have IDs
     requirements = spec.get("requirements", [])
     ensure_requirement_ids(requirements)
+
+    # Process dependency_edges into depends_on for each requirement
+    dependency_edges = spec.get("dependency_edges", [])
+    if dependency_edges:
+        # Build a map: req_id -> set of dependency IDs
+        depends_map: dict[str, set[str]] = {}
+        for edge in dependency_edges:
+            if isinstance(edge, (list, tuple)) and len(edge) == 2:
+                # edge format: [prereq_id, dependent_id]
+                # meaning: dependent_id depends on prereq_id
+                prereq_id, dependent_id = edge
+                if dependent_id not in depends_map:
+                    depends_map[dependent_id] = set()
+                depends_map[dependent_id].add(prereq_id)
+
+        # Update each requirement's depends_on field
+        for req in requirements:
+            rid = req.get("id")
+            if rid and rid in depends_map:
+                existing_deps = req.get("depends_on", [])
+                if isinstance(existing_deps, str):
+                    existing_deps = [existing_deps]
+                # Merge with existing dependencies
+                all_deps = set(existing_deps) | depends_map[rid]
+                req["depends_on"] = list(all_deps)
 
     # Handle clarification questions
     questions = spec.get("clarification_questions", [])
@@ -249,13 +289,17 @@ async def enrich_acceptance_map(
         return
 
     acceptance_map = spec.get("acceptance_map", [])
+    total = len(requirements)
+    print(f"\n生成验收标准 (共 {total} 个需求)...")
 
     for i, req in enumerate(requirements):
         rid = req.get("id", f"REQ-{i + 1}")
+        print(f"  [{i + 1}/{total}] {rid}: {req.get('title', '')[:40]}...", end=" ", flush=True)
 
         # Check if already has criteria
         existing = next((a for a in acceptance_map if a.get("requirement_id") == rid), None)
         if existing and existing.get("criteria"):
+            print("(已存在，跳过)")
             continue
 
         prompt = textwrap.dedent(f"""
@@ -283,8 +327,25 @@ async def enrich_acceptance_map(
 
             【要求】
             1. 每个需求生成 3-5 个具体的验收标准
-            2. 标准应该是可量化、可验证的
-            3. 覆盖功能、性能、用户体验等方面
+            2. 标准必须是**代码层面可验证的**，即通过阅读代码就能判断是否实现
+            3. 覆盖功能完整性、数据处理逻辑、错误处理、API设计等方面
+
+            【禁止生成的标准类型】
+            - 性能测试标准（如"响应时间在X秒内"、"支持X并发"）
+            - 压力测试标准（如"大数据量验证"）
+            - 用户体验测试标准（如"用户满意度"、"界面美观"）
+            - 需要实际运行才能验证的标准
+
+            【正确示例】
+            ✓ "实现了会员信息的增删改查功能"
+            ✓ "对无效输入返回适当的错误信息"
+            ✓ "使用了索引优化数据库查询"
+            ✓ "实现了JWT身份验证机制"
+
+            【错误示例】
+            ✗ "响应时间在1秒内" - 需要运行时测试
+            ✗ "支持1000并发用户" - 需要压力测试
+            ✗ "界面美观易用" - 主观标准
         """)
 
         data, _ = await call_llm_json(
@@ -299,6 +360,7 @@ async def enrich_acceptance_map(
         )
 
         standards = data.get("standards") or data.get("criteria") or []
+        print(f"✓ ({len(standards)} 条标准)")
 
         if existing:
             existing["criteria"] = standards
@@ -313,6 +375,7 @@ async def enrich_acceptance_map(
             get_logger().debug(f"[Spec] ({i + 1}/{len(requirements)}) {rid} 生成 {len(standards)} 条验收标准")
 
     spec["acceptance_map"] = acceptance_map
+    print("验收标准生成完成\n")
 
 
 def criteria_for_requirement(

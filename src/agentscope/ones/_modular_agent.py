@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 import asyncio
+import logging
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Sequence
 
 import shortuuid
+
+logger = logging.getLogger(__name__)
 
 from ..agent import AgentBase
 from ..message import Msg, TextBlock
@@ -28,6 +32,32 @@ class MemoryItem:
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     metadata: dict[str, Any] = field(default_factory=dict)
     importance: float = 0.5  # 0-1, for long-term memory filtering
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize to dictionary."""
+        return {
+            "content": self.content,
+            "role": self.role,
+            "timestamp": self.timestamp.isoformat(),
+            "metadata": self.metadata,
+            "importance": self.importance,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "MemoryItem":
+        """Deserialize from dictionary."""
+        ts = data.get("timestamp")
+        if isinstance(ts, str):
+            ts = datetime.fromisoformat(ts)
+        elif ts is None:
+            ts = datetime.now(timezone.utc)
+        return cls(
+            content=data.get("content", ""),
+            role=data.get("role", "user"),
+            timestamp=ts,
+            metadata=data.get("metadata", {}),
+            importance=data.get("importance", 0.5),
+        )
 
 
 class AgentMemory:
@@ -85,6 +115,21 @@ class AgentMemory:
             # TODO: Integrate with vector store for persistence
             pass
 
+    @property
+    def context(self) -> list[MemoryItem]:
+        """Get current conversation context (read-only)."""
+        return list(self._context)
+
+    @property
+    def short_term(self) -> list[MemoryItem]:
+        """Get short-term memories (read-only)."""
+        return list(self._short_term)
+
+    @property
+    def long_term(self) -> list[MemoryItem]:
+        """Get long-term memory cache (read-only)."""
+        return list(self._long_term_cache)
+
     def get_context_messages(self) -> list[dict[str, str]]:
         """Get context as LLM-compatible messages."""
         return [{"role": item.role, "content": item.content} for item in self._context]
@@ -122,6 +167,35 @@ class AgentMemory:
         self._context.clear()
         self._short_term.clear()
 
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize memory to dictionary.
+
+        Only persists long_term memories (cross-session value).
+        context and short_term are session-level and not saved.
+        """
+        return {
+            "context_limit": self.context_limit,
+            "short_term_limit": self.short_term_limit,
+            # Only persist long_term - context/short_term are session-level
+            "long_term": [item.to_dict() for item in self._long_term_cache],
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "AgentMemory":
+        """Deserialize memory from dictionary.
+
+        Only loads long_term memories. context/short_term start fresh.
+        """
+        memory = cls(
+            context_limit=data.get("context_limit", 20),
+            short_term_limit=data.get("short_term_limit", 50),
+        )
+        # Only load long_term - context/short_term start fresh each session
+        memory._long_term_cache = [
+            MemoryItem.from_dict(item) for item in data.get("long_term", [])
+        ]
+        return memory
+
 
 # =============================================================================
 # AgentKnowledge: RAG Document Retrieval
@@ -134,6 +208,24 @@ class KnowledgeDocument:
     source: str = ""
     metadata: dict[str, Any] = field(default_factory=dict)
     embedding: list[float] | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize to dictionary."""
+        return {
+            "content": self.content,
+            "source": self.source,
+            "metadata": self.metadata,
+            # Skip embedding for now (too large)
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "KnowledgeDocument":
+        """Deserialize from dictionary."""
+        return cls(
+            content=data.get("content", ""),
+            source=data.get("source", ""),
+            metadata=data.get("metadata", {}),
+        )
 
 
 class AgentKnowledge:
@@ -189,6 +281,26 @@ class AgentKnowledge:
         """Number of documents in knowledge base."""
         return len(self._documents)
 
+    @property
+    def documents(self) -> list[KnowledgeDocument]:
+        """Get all documents (read-only)."""
+        return list(self._documents)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize knowledge base to dictionary."""
+        return {
+            "documents": [doc.to_dict() for doc in self._documents],
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "AgentKnowledge":
+        """Deserialize knowledge base from dictionary."""
+        docs = [
+            KnowledgeDocument.from_dict(doc)
+            for doc in data.get("documents", [])
+        ]
+        return cls(documents=docs)
+
 
 # =============================================================================
 # AgentTaskBoard: Task Tracking
@@ -204,6 +316,41 @@ class TaskItem:
     completed_at: datetime | None = None
     result: str = ""
     subtasks: list["TaskItem"] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize to dictionary."""
+        return {
+            "task_id": self.task_id,
+            "description": self.description,
+            "status": self.status,
+            "created_at": self.created_at.isoformat(),
+            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
+            "result": self.result,
+            "subtasks": [st.to_dict() for st in self.subtasks],
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "TaskItem":
+        """Deserialize from dictionary."""
+        created = data.get("created_at")
+        if isinstance(created, str):
+            created = datetime.fromisoformat(created)
+        elif created is None:
+            created = datetime.now(timezone.utc)
+
+        completed = data.get("completed_at")
+        if isinstance(completed, str):
+            completed = datetime.fromisoformat(completed)
+
+        return cls(
+            task_id=data.get("task_id", ""),
+            description=data.get("description", ""),
+            status=data.get("status", "pending"),
+            created_at=created,
+            completed_at=completed,
+            result=data.get("result", ""),
+            subtasks=[cls.from_dict(st) for st in data.get("subtasks", [])],
+        )
 
 
 class AgentTaskBoard:
@@ -286,6 +433,31 @@ class AgentTaskBoard:
         """Get current task."""
         return self._current_task
 
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize task board to dictionary.
+
+        Only persists current_task (unfinished work).
+        task_history is just logs and not saved.
+        """
+        return {
+            "max_history": self.max_history,
+            # Only persist current task - history is just logs
+            "current_task": self._current_task.to_dict() if self._current_task else None,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "AgentTaskBoard":
+        """Deserialize task board from dictionary.
+
+        Only loads current_task. task_history starts fresh.
+        """
+        board = cls(max_history=data.get("max_history", 100))
+        current = data.get("current_task")
+        if current:
+            board._current_task = TaskItem.from_dict(current)
+        # task_history starts fresh each session
+        return board
+
 
 # =============================================================================
 # AgentPrompt: Prompt Management
@@ -309,22 +481,57 @@ class AgentPrompt:
         self.collaboration_guidelines = collaboration_guidelines or []
         self.variables = variables or {}
 
-    def build_system_prompt(self) -> str:
-        """Build complete system prompt."""
+    def build_system_prompt(self, *, tool_context: str = "") -> str:
+        """Build complete system prompt with tool usage instructions.
+
+        Args:
+            tool_context: Overview of available tools (from _get_tool_overview).
+
+        Returns:
+            Complete system prompt with role, mission, and tool instructions.
+        """
         if self.system_prompt:
-            return self._apply_variables(self.system_prompt)
+            base_prompt = self._apply_variables(self.system_prompt)
+        elif self.role_description:
+            guidelines = "\n".join(f"- {g}" for g in self.collaboration_guidelines)
+            base_prompt = f"角色: {self.role_description}\n"
+            if self.deliverable_expectation:
+                base_prompt += f"使命: {self.deliverable_expectation}\n"
+            if guidelines:
+                base_prompt += f"协作守则:\n{guidelines}\n"
+            base_prompt += "当你需要更多信息时，要明确写出缺口并提出具体请求。"
+            base_prompt = self._apply_variables(base_prompt)
+        else:
+            base_prompt = ""
 
-        if not self.role_description:
-            return ""
+        # Add tool usage instructions if tools are available
+        if tool_context:
+            tool_instructions = f"""
 
-        guidelines = "\n".join(f"- {g}" for g in self.collaboration_guidelines)
-        prompt = f"角色: {self.role_description}\n"
-        if self.deliverable_expectation:
-            prompt += f"使命: {self.deliverable_expectation}\n"
-        if guidelines:
-            prompt += f"协作守则:\n{guidelines}\n"
-        prompt += "当你需要更多信息时，要明确写出缺口并提出具体请求。"
-        return self._apply_variables(prompt)
+## 工具使用指南
+
+你有以下工具可用，**必须通过 tool_use 调用工具**来完成任务：
+
+{tool_context}
+
+### 重要规则
+1. **禁止直接输出代码块**：不要在回复中写 ```code``` 代码块，而是调用相应工具执行
+2. **优先使用工具**：当需要编辑文件、执行命令、搜索内容时，必须调用工具
+3. **工具调用格式**：使用 tool_use 块调用工具，不要用 markdown 代码块描述操作
+4. **一次一个工具**：每次回复只调用一个工具，等待结果后再决定下一步
+
+### 正确示例
+- 需要创建文件时 → 调用 claude_code_edit 工具
+- 需要查看文件时 → 调用 claude_code_edit 工具（使用 Read 操作）
+- 需要执行命令时 → 调用 claude_code_edit 工具（使用 Bash 操作）
+
+### 错误示例（禁止）
+- ❌ 直接输出 ```python ... ``` 代码块让用户复制
+- ❌ 说"请运行以下命令"然后输出命令文本
+- ❌ 描述应该做什么但不实际调用工具"""
+            return base_prompt + tool_instructions
+
+        return base_prompt
 
     def build_context_prompt(
         self,
@@ -352,6 +559,27 @@ class AgentPrompt:
         for key, value in self.variables.items():
             result = result.replace(f"{{{key}}}", value)
         return result
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize prompt configuration to dictionary."""
+        return {
+            "system_prompt": self.system_prompt,
+            "role_description": self.role_description,
+            "deliverable_expectation": self.deliverable_expectation,
+            "collaboration_guidelines": self.collaboration_guidelines,
+            "variables": self.variables,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "AgentPrompt":
+        """Deserialize prompt configuration from dictionary."""
+        return cls(
+            system_prompt=data.get("system_prompt", ""),
+            role_description=data.get("role_description", ""),
+            deliverable_expectation=data.get("deliverable_expectation", ""),
+            collaboration_guidelines=data.get("collaboration_guidelines", []),
+            variables=data.get("variables", {}),
+        )
 
 
 # =============================================================================
@@ -417,17 +645,39 @@ class ModularAgent(AgentBase):
             self.memory.add_to_context(content, role=m.role)
 
     async def reply(self, msg: Msg | Sequence[Msg] | None = None, **kwargs: Any) -> Msg:
-        """Generate a reply using all agent components."""
+        """Generate a reply using all agent components with tool calling support.
+
+        This method implements a ReAct-style loop:
+        1. Call LLM with available tools
+        2. If LLM returns tool calls, execute them
+        3. Feed results back to LLM
+        4. Repeat until LLM returns a final text response
+        """
+        import time as _time
+
+        # Get observer for ReAct loop visibility
+        try:
+            from agentscope.scripts._observability import get_agent_react_observer
+            observer = get_agent_react_observer()
+        except ImportError:
+            observer = None
+
         if msg is not None:
             await self.observe(msg)
 
         await self._ensure_mcp_registered()
 
-        # Get user query
+        # Get user query and task_id
         user_query = ""
         if msg:
             last_msg = msg[-1] if isinstance(msg, Sequence) else msg
             user_query = last_msg.get_text_content()
+
+        task_id = kwargs.get("task_id", "unknown")
+
+        # Notify observer: ReAct loop starting
+        if observer:
+            observer.on_react_start(self.id, task_id, user_query)
 
         # Build context from all components
         memory_ctx = self.memory.get_short_term_summary()
@@ -439,13 +689,13 @@ class ModularAgent(AgentBase):
         task_ctx = self.task_board.get_status_summary()
         tool_ctx = self._get_tool_overview()
 
-        # Build complete prompt
-        system_prompt = self.prompt.build_system_prompt()
+        # Build complete prompt with tool instructions in system prompt
+        system_prompt = self.prompt.build_system_prompt(tool_context=tool_ctx)
         context_prompt = self.prompt.build_context_prompt(
             memory_context="\n".join(filter(None, [memory_ctx, long_term_ctx])),
             knowledge_context=knowledge_ctx,
             task_context=task_ctx,
-            tool_context=tool_ctx,
+            # tool_context is now in system_prompt, no need to duplicate here
         )
 
         # Build messages for LLM
@@ -454,27 +704,301 @@ class ModularAgent(AgentBase):
         # Construct the final prompt
         final_prompt = f"{system_prompt}\n\n{context_prompt}" if context_prompt else system_prompt
 
-        # Call LLM
+        # Get tool schemas if toolkit is available
+        tool_schemas = None
+        if self.toolkit and hasattr(self.toolkit, "get_json_schemas"):
+            tool_schemas = self.toolkit.get_json_schemas()
+
+        # ReAct loop with tool calling
+        max_iters = kwargs.get("max_iters", 10)
         response_text = ""
+        iterations_used = 0
+        success = True
+
+        # Set current task board for TaskBoard tools
+        from ..tool import set_current_task_board
+        set_current_task_board(self.task_board)
+
+        # Set current agent ID for Claude Code observability
+        try:
+            from ..scripts._claude_code import set_current_agent_id
+            set_current_agent_id(self.id)
+        except ImportError:
+            pass
+
         if self.llm:
             try:
                 # Add system message at the beginning
-                llm_messages = [{"role": "system", "content": final_prompt}] if final_prompt else []
-                llm_messages.extend(messages)
+                # For Anthropic-compatible APIs (like Zhipu), convert system to user
+                from ..model import AnthropicChatModel
+                is_anthropic = isinstance(self.llm, AnthropicChatModel)
 
-                resp = await self.llm(llm_messages, stream=False)
-                for block in resp.content:
-                    if isinstance(block, dict):
-                        response_text += block.get("text", "")
-                    elif hasattr(block, "text"):
-                        response_text += block.text
+                if is_anthropic:
+                    # Zhipu Anthropic API doesn't accept role='system' in messages
+                    # Convert to user message with system instruction prefix
+                    llm_messages = [{"role": "user", "content": f"[System Instruction]\n{final_prompt}"}] if final_prompt else []
+                    # Also convert any system messages in the context to user
+                    for m in messages:
+                        if m.get("role") == "system":
+                            llm_messages.append({"role": "user", "content": f"[System]\n{m.get('content', '')}"})
+                        else:
+                            llm_messages.append(m)
+                else:
+                    llm_messages = [{"role": "system", "content": final_prompt}] if final_prompt else []
+                    llm_messages.extend(messages)
+
+                for iteration in range(max_iters):
+                    iterations_used = iteration + 1
+
+                    # Notify observer: iteration starting
+                    if observer:
+                        observer.on_iteration(self.id, iterations_used, max_iters)
+
+                    # Call LLM with tools
+                    # Use tool_choice="auto" to encourage tool usage
+                    # Some models (like Qwen) may still not generate tool_calls
+                    resp = await self.llm(
+                        llm_messages,
+                        stream=False,
+                        tools=tool_schemas,
+                        tool_choice="auto" if tool_schemas else None,
+                    )
+
+                    # Check if response contains tool calls
+                    has_tool_calls = False
+                    tool_call_blocks = []
+                    text_content = ""
+
+                    for block in resp.content:
+                        if isinstance(block, dict):
+                            if block.get("type") == "tool_use":
+                                has_tool_calls = True
+                                tool_call_blocks.append(block)
+                            elif block.get("type") == "text":
+                                text_content += block.get("text", "")
+                        elif hasattr(block, "type"):
+                            if block.type == "tool_use":
+                                has_tool_calls = True
+                                tool_call_blocks.append(block)
+                            elif block.type == "text":
+                                text_content += getattr(block, "text", "")
+
+                    # Notify observer: agent thinking (if text content)
+                    if observer and text_content:
+                        observer.on_thinking(self.id, text_content)
+
+                    if not has_tool_calls:
+                        # No tool calls - check if LLM output code blocks without using tools
+                        if self._should_fallback_to_claude_code(text_content):
+                            # [CHANGED] 不再自动回退，而是打回让 LLM 重新生成
+                            if observer:
+                                observer.on_fallback(
+                                    self.id,
+                                    "LLM 未使用工具",
+                                    "打回重新生成"
+                                )
+                            logger.warning(
+                                "[ModularAgent] LLM 输出了代码块但未调用工具，打回重新生成"
+                            )
+
+                            # 将当前响应加入历史
+                            llm_messages.append({
+                                "role": "assistant",
+                                "content": text_content,
+                            })
+
+                            # 添加提醒消息，要求 LLM 使用工具
+                            reminder = """【系统提醒】你刚才直接输出了代码块，但没有调用工具。
+
+**重要规则：**
+1. 禁止直接输出 ```code``` 代码块
+2. 必须通过 tool_use 调用 claude_code_edit 工具来创建/修改文件
+3. 工具调用格式示例：调用 claude_code_edit 工具，传入 prompt 参数描述要执行的操作
+
+请重新生成你的回复，这次必须使用 claude_code_edit 工具来执行代码操作。"""
+
+                            llm_messages.append({
+                                "role": "user",
+                                "content": reminder,
+                            })
+
+                            # 继续循环，让 LLM 重新生成
+                            continue
+
+                        # No code blocks, this is a normal text response - done
+                        response_text = text_content
+                        break
+
+                    # Execute tool calls and collect results
+                    # Check if LLM supports native tool_use format in assistant messages
+                    _supports_tool_use = True
+                    if self.llm:
+                        _model_name = getattr(self.llm, "model", "") or ""
+                        _config_name = getattr(self.llm, "config_name", "") or ""
+                        if "siliconflow" in _config_name.lower() or "silicon" in _model_name.lower():
+                            _supports_tool_use = False
+                        elif hasattr(self.llm, "_base_url"):
+                            _base_url = str(getattr(self.llm, "_base_url", ""))
+                            if "siliconflow" in _base_url.lower():
+                                _supports_tool_use = False
+
+                    if _supports_tool_use:
+                        llm_messages.append({
+                            "role": "assistant",
+                            "content": list(resp.content),
+                        })
+                    else:
+                        # Convert assistant message to text format for compatibility
+                        # Include both text content and tool call descriptions
+                        assistant_parts = []
+                        if text_content:
+                            assistant_parts.append(text_content)
+                        for tc in tool_call_blocks:
+                            tc_name = tc.get("name") if isinstance(tc, dict) else getattr(tc, "name", "")
+                            tc_input = tc.get("input") if isinstance(tc, dict) else getattr(tc, "input", {})
+                            assistant_parts.append(f"[调用工具: {tc_name}]\n参数: {tc_input}")
+                        llm_messages.append({
+                            "role": "assistant",
+                            "content": "\n\n".join(assistant_parts) if assistant_parts else "[Calling tools...]",
+                        })
+
+                    tool_results = []
+                    for tool_call in tool_call_blocks:
+                        tool_id = tool_call.get("id") if isinstance(tool_call, dict) else getattr(tool_call, "id", "")
+                        tool_name = tool_call.get("name") if isinstance(tool_call, dict) else getattr(tool_call, "name", "")
+                        tool_input = tool_call.get("input") if isinstance(tool_call, dict) else getattr(tool_call, "input", {})
+
+                        # Notify observer: tool call starting
+                        if observer:
+                            observer.on_tool_call_start(self.id, tool_name, tool_input)
+
+                        tool_start = _time.perf_counter()
+                        try:
+                            # Execute the tool
+                            result = await self.toolkit.call_tool_function({
+                                "id": tool_id,
+                                "name": tool_name,
+                                "input": tool_input,
+                            })
+                            # Collect result content
+                            result_text = ""
+                            async for chunk in result:
+                                if hasattr(chunk, "content"):
+                                    for content_block in chunk.content:
+                                        if isinstance(content_block, dict):
+                                            result_text += content_block.get("text", "")
+                                        elif hasattr(content_block, "text"):
+                                            result_text += content_block.text
+
+                            tool_duration = _time.perf_counter() - tool_start
+
+                            # Notify observer: tool call succeeded
+                            if observer:
+                                observer.on_tool_call_end(
+                                    self.id, tool_name,
+                                    result_text or "[成功]",
+                                    success=True,
+                                    duration=tool_duration
+                                )
+
+                            tool_results.append({
+                                "type": "tool_result",
+                                "tool_use_id": tool_id,
+                                "content": result_text or "[Tool executed successfully]",
+                            })
+                        except Exception as e:
+                            tool_duration = _time.perf_counter() - tool_start
+
+                            # Notify observer: tool call failed
+                            if observer:
+                                observer.on_tool_call_end(
+                                    self.id, tool_name,
+                                    str(e),
+                                    success=False,
+                                    duration=tool_duration
+                                )
+
+                            tool_results.append({
+                                "type": "tool_result",
+                                "tool_use_id": tool_id,
+                                "content": f"[Tool error: {e}]",
+                                "is_error": True,
+                            })
+
+                    # Add tool results to messages
+                    # Check if LLM supports native tool_result format
+                    # SiliconFlow and some other providers only support text/image_url
+                    supports_tool_result = True
+                    if self.llm:
+                        model_name = getattr(self.llm, "model", "") or ""
+                        config_name = getattr(self.llm, "config_name", "") or ""
+                        # SiliconFlow models don't support tool_result format
+                        if "siliconflow" in config_name.lower() or "silicon" in model_name.lower():
+                            supports_tool_result = False
+                        # Check for other incompatible providers
+                        elif hasattr(self.llm, "_base_url"):
+                            base_url = str(getattr(self.llm, "_base_url", ""))
+                            if "siliconflow" in base_url.lower():
+                                supports_tool_result = False
+
+                    if supports_tool_result:
+                        llm_messages.append({
+                            "role": "user",
+                            "content": tool_results,
+                        })
+                    else:
+                        # Convert tool_results to plain text format for compatibility
+                        results_text = []
+                        for tr in tool_results:
+                            tool_id = tr.get("tool_use_id", "unknown")
+                            content = tr.get("content", "")
+                            is_error = tr.get("is_error", False)
+                            prefix = "❌ 工具错误" if is_error else "✅ 工具结果"
+                            results_text.append(f"{prefix} [{tool_id}]:\n{content}")
+                        llm_messages.append({
+                            "role": "user",
+                            "content": "\n\n".join(results_text),
+                        })
+
+                    # Notify observer: task board update (if applicable)
+                    if observer and hasattr(self.task_board, "get_all_tasks"):
+                        tasks = self.task_board.get_all_tasks()
+                        if tasks:
+                            observer.on_task_board_update(self.id, tasks)
+
+                else:
+                    # Loop completed without break (max iterations reached)
+                    if not response_text:
+                        response_text = "[Max iterations reached without final response]"
+                        success = False
+
             except Exception as e:
                 response_text = f"[Error] {e}"
+                success = False
+                if observer:
+                    observer.on_error(self.id, e, "ReAct loop")
         else:
             response_text = "[No LLM configured]"
+            success = False
 
         # Store response in memory
         self.memory.add_to_context(response_text, role="assistant")
+
+        # Clear current task board after reply complete
+        set_current_task_board(None)
+
+        # Clear current agent ID after reply complete
+        try:
+            from ..scripts._claude_code import set_current_agent_id
+            set_current_agent_id(None)
+        except ImportError:
+            pass
+
+        # Notify observer: ReAct loop complete
+        if observer:
+            observer.on_react_complete(
+                self.id, task_id, success, response_text, iterations_used
+            )
 
         # Build response message
         response = Msg(
@@ -496,6 +1020,112 @@ class ModularAgent(AgentBase):
             desc = schema.get("description") or ""
             lines.append(f"- {name}: {desc}")
         return "\n".join(lines)
+
+    def _should_fallback_to_claude_code(self, text_content: str) -> bool:
+        """Check if we should fallback to claude_code_edit for code execution.
+
+        This is triggered when the LLM returns text with code blocks but no tool_use.
+        Some models (like SiliconFlow/Qwen) don't support tool calling.
+
+        Args:
+            text_content: The text response from LLM.
+
+        Returns:
+            True if fallback should be triggered.
+        """
+        # Check if text contains code blocks
+        has_code_blocks = bool(re.search(r"```\w*\n", text_content))
+        if not has_code_blocks:
+            return False
+
+        # Check if toolkit has claude_code_edit tool
+        if not self.toolkit or not getattr(self.toolkit, "tools", None):
+            return False
+
+        has_claude_code = any(
+            "claude_code" in name.lower()
+            for name in self.toolkit.tools.keys()
+        )
+        return has_claude_code
+
+    async def _fallback_claude_code_edit(
+        self, user_query: str, llm_response: str
+    ) -> str | None:
+        """Execute fallback to claude_code_edit when LLM doesn't generate tool calls.
+
+        This method extracts the LLM's response and forwards it to claude_code_edit
+        for actual code execution.
+
+        Args:
+            user_query: The original user query.
+            llm_response: The LLM's text response containing code blocks.
+
+        Returns:
+            The result from claude_code_edit, or None if fallback failed.
+        """
+        try:
+            # Import claude_code_edit
+            from agentscope.scripts._claude_code import claude_code_edit
+
+            # Build a comprehensive prompt that includes both the original task
+            # and the LLM's suggested implementation
+            fallback_prompt = f"""请根据以下内容创建代码文件：
+
+## 原始任务
+{user_query}
+
+## LLM 建议的实现方案
+{llm_response}
+
+请根据上述建议，创建所需的代码文件。确保：
+1. 文件路径正确
+2. 代码完整可运行
+3. 按照建议的目录结构创建文件
+
+## 验证要求（重要）
+完成代码编写后，你**必须**主动验证代码的正确性：
+1. 运行适当的命令验证代码可以被正确加载/编译（如导入测试、构建命令等）
+2. 如果项目有测试框架，运行相关测试
+3. 如果验证失败，立即修复问题后再次验证
+4. 只有验证通过后才算任务完成
+
+验证方式由你根据项目类型自行决定，确保代码可以正常运行。"""
+
+            logger.info("[ModularAgent] 🖥️ Fallback: 调用 claude_code_edit 执行代码生成")
+            logger.info("[ModularAgent]   任务摘要: %s...", user_query[:100] if len(user_query) > 100 else user_query)
+
+            # Call claude_code_edit
+            result = await claude_code_edit(prompt=fallback_prompt)
+
+            # Extract result text
+            result_text = ""
+            if result and result.content:
+                for block in result.content:
+                    if hasattr(block, "text"):
+                        result_text += block.text
+                    elif isinstance(block, dict) and "text" in block:
+                        result_text += block["text"]
+
+            if result_text:
+                # Log FULL result for transparency
+                logger.info("[ModularAgent] ✓ Fallback 成功完成")
+                # Show result preview (first 500 chars)
+                result_preview = result_text[:500] if len(result_text) > 500 else result_text
+                logger.info("[ModularAgent]   结果预览: %s%s",
+                    result_preview,
+                    "..." if len(result_text) > 500 else ""
+                )
+                return f"[通过 Claude Code 执行] {result_text}"
+            else:
+                logger.warning("[ModularAgent] ⚠ Fallback 返回空结果")
+                return None
+
+        except ImportError:
+            logger.warning("[ModularAgent] claude_code_edit 不可用，跳过 fallback")
+            return None
+        except Exception as e:
+            logger.error("[ModularAgent] Fallback 执行失败: %s", e)
+            return None
 
     # Task management shortcuts
     def start_task(self, description: str) -> TaskItem:
@@ -525,6 +1155,109 @@ class ModularAgent(AgentBase):
     def add_knowledge(self, content: str, source: str = "") -> None:
         """Add document to knowledge base."""
         self.knowledge.add_document(content, source)
+
+    # =========================================================================
+    # Persistence: Save and Load
+    # =========================================================================
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize agent state to dictionary.
+
+        Persistence strategy (only cross-session valuable data):
+        - memory: Only long_term (context/short_term are session-level)
+        - knowledge: All documents (RAG corpus is core asset)
+        - task_board: Only current_task (history is just logs)
+        - prompt: Full config (Agent's identity and behavior)
+        - toolkit/llm: Runtime configs, not persisted
+        """
+        return {
+            "agent_id": self.id,
+            "name": self.name,
+            "memory": self.memory.to_dict(),
+            "knowledge": self.knowledge.to_dict(),
+            "task_board": self.task_board.to_dict(),
+            "prompt": self.prompt.to_dict(),
+        }
+
+    @classmethod
+    def from_dict(
+        cls,
+        data: dict[str, Any],
+        *,
+        llm: ChatModelBase | None = None,
+        mcp_clients: Sequence[MCPClientBase] | None = None,
+        toolkit: Toolkit | None = None,
+    ) -> "ModularAgent":
+        """Deserialize agent state from dictionary.
+
+        Args:
+            data: Serialized agent state.
+            llm: Optional LLM model (runtime config).
+            mcp_clients: Optional MCP clients (runtime config).
+            toolkit: Optional toolkit (runtime config).
+
+        Returns:
+            Restored ModularAgent instance.
+        """
+        return cls(
+            agent_id=data.get("agent_id"),
+            name=data.get("name", "Agent"),
+            memory=AgentMemory.from_dict(data.get("memory", {})),
+            knowledge=AgentKnowledge.from_dict(data.get("knowledge", {})),
+            task_board=AgentTaskBoard.from_dict(data.get("task_board", {})),
+            prompt=AgentPrompt.from_dict(data.get("prompt", {})),
+            toolkit=toolkit,
+            llm=llm,
+            mcp_clients=mcp_clients,
+        )
+
+    def save(self, path: str | "Path") -> None:
+        """Save agent state to a JSON file.
+
+        Args:
+            path: Path to save the agent state file.
+        """
+        import json
+        from pathlib import Path as PathLib
+
+        path = PathLib(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(self.to_dict(), f, ensure_ascii=False, indent=2)
+
+        logger.info(f"Agent {self.name} saved to {path}")
+
+    @classmethod
+    def load(
+        cls,
+        path: str | "Path",
+        *,
+        llm: ChatModelBase | None = None,
+        mcp_clients: Sequence[MCPClientBase] | None = None,
+        toolkit: Toolkit | None = None,
+    ) -> "ModularAgent":
+        """Load agent state from a JSON file.
+
+        Args:
+            path: Path to the agent state file.
+            llm: Optional LLM model (runtime config).
+            mcp_clients: Optional MCP clients (runtime config).
+            toolkit: Optional toolkit (runtime config).
+
+        Returns:
+            Restored ModularAgent instance.
+        """
+        import json
+        from pathlib import Path as PathLib
+
+        path = PathLib(path)
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+
+        agent = cls.from_dict(data, llm=llm, mcp_clients=mcp_clients, toolkit=toolkit)
+        logger.info(f"Agent {agent.name} loaded from {path}")
+        return agent
 
 
 # =============================================================================
@@ -644,9 +1377,9 @@ def _build_knowledge_from_metaso(
             utterance,
             scope=scope,
             size=size,
-            include_summary=False,
+            include_summary=True,  # Include summary for richer content
             include_raw_content=False,
-            concise_snippet=True,
+            concise_snippet=False,  # Get full snippet, not concise
         )
         # Extract documents from response
         hits = resp.metadata.get("hits", []) if resp.metadata else []
@@ -654,15 +1387,16 @@ def _build_knowledge_from_metaso(
             title = hit.get("title", "")
             snippet = hit.get("snippet", "") or hit.get("summary", "")
             url = hit.get("url", "")
-            if snippet:
-                content = f"{title}\n{snippet}" if title else snippet
+            # Add document even if only title is available
+            if snippet or title:
+                content = f"{title}\n{snippet}" if title and snippet else (title or snippet)
                 knowledge.add_document(content, source=url)
 
-        # Also add main response content
+        # Also add main response content as summary
         if resp.content:
             first_block = resp.content[0]
             main_text = first_block.text if hasattr(first_block, "text") else str(first_block)
-            if main_text:
+            if main_text and main_text != "No results returned from Metaso.":
                 knowledge.add_document(main_text, source="metaso_summary")
 
     except Exception as exc:
@@ -686,6 +1420,8 @@ def spawn_modular_agent(
     metaso_scope: str = "webpage",
     metaso_size: int = 5,
     with_file_tools: bool = False,
+    persist_to: str | None = None,
+    agent_spec: Any | None = None,
 ) -> tuple[Any, ModularAgent]:
     """Spawn a new ModularAgent based on requirements.
 
@@ -704,25 +1440,50 @@ def spawn_modular_agent(
         metaso_scope: Scope for Metaso search (webpage, academic, etc.).
         metaso_size: Number of Metaso search results.
         with_file_tools: Whether to add file operation tools (view/write/insert).
+        persist_to: Directory to persist agent manifest (e.g., "deliverables/agents").
+        agent_spec: AgentSpec from LLM analysis with agent identity and capabilities.
 
     Returns:
         Tuple of (AgentProfile, ModularAgent).
     """
+    from pathlib import Path
     from ..aa import AgentProfile, AgentCapabilities, StaticScore
 
-    # Generate agent ID and name
-    agent_id = f"modular-{shortuuid.uuid()[:8]}"
-    name = agent_name or "Modular Agent"
+    # Use agent_spec from LLM if provided, otherwise generate basic identity
+    if agent_spec is not None:
+        # Use LLM-generated spec
+        agent_id = agent_spec.agent_id or f"agent-{shortuuid.uuid()[:6]}"
+        name = agent_spec.name or agent_name or "Specialist Agent"
+        spec_skills = set(agent_spec.skills) if agent_spec.skills else set()
+        spec_domains = set(agent_spec.domains) if agent_spec.domains else set()
+        spec_system_prompt = agent_spec.system_prompt or ""
+        spec_description = getattr(agent_spec, "description", "") or ""
+    else:
+        # Fallback: generate basic identity
+        agent_id = f"agent-{shortuuid.uuid()[:6]}"
+        name = agent_name or "Specialist Agent"
+        spec_skills = set()
+        spec_domains = set()
+        spec_system_prompt = ""
+        spec_description = ""
 
-    # Extract capabilities from requirement
-    skills = set(getattr(requirement, "skills", []))
+    # Extract capabilities from requirement and merge with spec
+    # Normalize skills and domains for consistent matching
+    from ..aa._vocabulary import normalize_skills, normalize_domains
+
+    raw_skills = set(getattr(requirement, "skills", [])) | spec_skills
+    raw_domains = set(getattr(requirement, "domains", [])) | spec_domains or {"general"}
+
+    skills = normalize_skills(raw_skills)
+    domains = normalize_domains(raw_domains)
     tools = set(getattr(requirement, "tools", []))
-    domains = set(getattr(requirement, "domains", [])) or {"general"}
     languages = set(getattr(requirement, "languages", [])) or {"zh", "en"}
 
-    # Build prompt
+    # Build prompt - prioritize: system_prompt arg > agent_spec.system_prompt > generated
     if system_prompt:
         prompt = AgentPrompt(system_prompt=system_prompt)
+    elif spec_system_prompt:
+        prompt = AgentPrompt(system_prompt=spec_system_prompt)
     else:
         skills_str = ", ".join(skills) if skills else "通用技能"
         tools_str = ", ".join(tools) if tools else "基础工具"
@@ -752,16 +1513,33 @@ def spawn_modular_agent(
     if final_toolkit is None and with_file_tools:
         try:
             from agentscope.scripts.hive_toolkit import HiveToolkitManager
-            toolkit_manager = HiveToolkitManager(llm=llm)
+            toolkit_manager = HiveToolkitManager(llm=llm, mcp_clients=mcp_clients)
+            # Use Claude Code tools instead of deprecated file tools
             final_toolkit = toolkit_manager.build_toolkit(
-                tools_filter={"view_text_file", "write_text_file", "insert_text_file"}
+                tools_filter={"claude_code_edit", "claude_code_chat"}
             )
             from ..scripts._observability import get_logger
-            get_logger().info(f"[INFO] Agent {name} 已添加文件操作工具")
+            get_logger().info(f"[INFO] Agent {name} 已添加 Claude Code 工具")
         except ImportError:
             final_toolkit = Toolkit()
     elif final_toolkit is None:
         final_toolkit = Toolkit()
+
+    # Register TaskBoard tools for agent task management
+    from ..tool import (
+        task_board_write,
+        task_board_read,
+        TASK_BOARD_WRITE_SCHEMA,
+        TASK_BOARD_READ_SCHEMA,
+    )
+    final_toolkit.register_tool_function(
+        task_board_write,
+        json_schema=TASK_BOARD_WRITE_SCHEMA,
+    )
+    final_toolkit.register_tool_function(
+        task_board_read,
+        json_schema=TASK_BOARD_READ_SCHEMA,
+    )
 
     # Create agent
     agent = ModularAgent(
@@ -777,21 +1555,27 @@ def spawn_modular_agent(
     )
 
     # Create profile
+    # 秘塔生成的 Agent 设置：
+    # - metaso_generated=1.0（秘塔生成）
+    # - brand_certified=0.0（用户上传，非官方）
+    # - is_cold_start=True（需要冷启动积累数据）
     profile = AgentProfile(
         agent_id=agent_id,
         name=name,
         static_score=StaticScore(
-            performance=0.7,
-            brand=0.5,
-            recognition=0.5,
+            performance=0.5,       # 默认中等，需要数据积累
+            recognition=0.5,       # 默认中等，需要用户评分
+            brand_certified=0.0,   # 非官方 Agent
+            metaso_generated=1.0,  # 秘塔生成
         ),
         capabilities=AgentCapabilities(
             skills=skills,
             tools=tools,
             domains=domains,
             languages=languages,
+            description=spec_description or f"{name}: {', '.join(skills) if skills else '通用技能'}",
         ),
-        is_cold_start=True,
+        is_cold_start=True,  # 新 Agent 需要冷启动
         metadata={
             "source": "modular_agent_factory",
             "utterance": utterance,
@@ -799,4 +1583,206 @@ def spawn_modular_agent(
         },
     )
 
+    # Persist agent manifest and full state if directory specified
+    agent_description = spec_description or f"{name}: {', '.join(skills) if skills else '通用技能'}"
+    if persist_to:
+        _persist_agent_manifest(
+            agent_id=agent_id,
+            name=name,
+            persist_dir=persist_to,
+            skills=skills,
+            tools=tools,
+            domains=domains,
+            languages=languages,
+            prompt=prompt,
+            utterance=utterance,
+            knowledge_count=knowledge.document_count,
+            tags=list(agent_spec.tags) if agent_spec and agent_spec.tags else None,
+            parent_domain=agent_spec.parent_domain if agent_spec else None,
+            description=agent_description,
+        )
+
+        # Save complete agent state (memory, knowledge, task_board, prompt)
+        # This enables full agent restoration for immediate use and distribution
+        agent_state_path = Path(persist_to) / agent_id / "state.json"
+        try:
+            agent.save(agent_state_path)
+            from ..scripts._observability import get_logger
+            get_logger().info(f"[INFO] Agent {name} 完整状态已保存到 {agent_state_path}")
+        except Exception as exc:
+            from ..scripts._observability import get_logger
+            get_logger().warn(f"[WARN] 保存 Agent 完整状态失败: {exc}")
+
     return profile, agent
+
+
+def _persist_agent_manifest(
+    *,
+    agent_id: str,
+    name: str,
+    persist_dir: str,
+    skills: set[str],
+    tools: set[str],
+    domains: set[str],
+    languages: set[str],
+    prompt: "AgentPrompt",
+    utterance: str,
+    knowledge_count: int,
+    tags: list[str] | None = None,
+    parent_domain: str | None = None,
+    description: str | None = None,
+) -> None:
+    """Persist agent manifest to local storage and register in registry.
+
+    Args:
+        agent_id: Agent ID.
+        name: Agent display name.
+        persist_dir: Base directory for agent storage.
+        skills: Agent skills.
+        tools: Agent tools.
+        domains: Agent domains.
+        languages: Agent languages.
+        prompt: Agent prompt configuration.
+        utterance: Original user utterance.
+        knowledge_count: Number of knowledge documents.
+        tags: Optional tags for fine-grained matching.
+        parent_domain: Parent domain for new custom domains.
+        description: Agent description for requirement matching.
+    """
+    from pathlib import Path
+    from .manifest import AgentManifest, PromptConfig
+
+    try:
+        # Create agent directory
+        agent_dir = Path(persist_dir) / agent_id
+        agent_dir.mkdir(parents=True, exist_ok=True)
+
+        # Build prompt config
+        prompt_config = PromptConfig(
+            system_prompt=prompt.system_prompt,
+            role_description=prompt.role_description,
+            deliverable_expectation=prompt.deliverable_expectation,
+            collaboration_guidelines=prompt.collaboration_guidelines,
+            variables=prompt.variables,
+        )
+
+        # Create manifest
+        # 使用传入的 description，如果没有则生成默认描述
+        final_description = description or f"{name}: {', '.join(skills) if skills else '通用技能'}"
+        manifest = AgentManifest(
+            id=agent_id,
+            name=name,
+            version="1.0.0",
+            skills=skills,
+            tools=tools,
+            domains=domains,
+            languages=languages,
+            prompt_config=prompt_config,
+            description=final_description,
+            metadata={
+                "source": "modular_agent_factory",
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "utterance": utterance,
+                "knowledge_count": knowledge_count,
+                "tags": tags or [],
+                "parent_domain": parent_domain,
+            },
+            manifest_path=agent_dir / "manifest.json",
+        )
+
+        # Save manifest
+        manifest.save(agent_dir / "manifest.json")
+
+        # Register in global registry
+        try:
+            from ..aa._agent_registry import (
+                get_global_registry,
+                AgentRegistryEntry,
+            )
+
+            registry_path = Path(persist_dir) / "registry.json"
+            registry = get_global_registry(registry_path)
+
+            # Register custom domains if needed
+            for domain in domains:
+                if domain not in registry.domains:
+                    registry.register_domain(
+                        domain,
+                        parent=parent_domain or "specialist",
+                        created_by="llm",
+                    )
+
+            # Register agent
+            entry = AgentRegistryEntry(
+                agent_id=agent_id,
+                name=name,
+                domains=list(domains),
+                skills=list(skills),
+                tags=tags or [],
+                manifest_path=str(agent_dir / "manifest.json"),
+                created_by="llm",
+            )
+            registry.register_agent(entry)
+
+        except Exception as reg_exc:
+            logger.warning("Failed to register agent in registry: %s", reg_exc)
+
+        from ..scripts._observability import get_logger
+        get_logger().info(f"[INFO] Agent {name} ({agent_id}) 已保存到 {agent_dir}")
+
+    except Exception as exc:
+        from ..scripts._observability import get_logger
+        get_logger().warn(f"[WARN] 保存 Agent manifest 失败: {exc}")
+
+
+def load_modular_agent(
+    agent_dir: str,
+    *,
+    llm: "ChatModelBase | None" = None,
+    mcp_clients: "Sequence[MCPClientBase] | None" = None,
+    toolkit: "Toolkit | None" = None,
+) -> "ModularAgent":
+    """Load a ModularAgent from a saved directory.
+
+    This function loads a complete agent from a directory created by
+    spawn_modular_agent with persist_to. It restores the full agent state
+    including memory, knowledge, task_board, and prompt.
+
+    Args:
+        agent_dir: Path to the agent directory (contains state.json).
+        llm: Optional LLM model to use (not serialized).
+        mcp_clients: Optional MCP clients to use (not serialized).
+        toolkit: Optional toolkit to use (not serialized).
+
+    Returns:
+        Restored ModularAgent instance.
+
+    Raises:
+        FileNotFoundError: If state.json doesn't exist in the directory.
+        ValueError: If the state file is invalid.
+    """
+    from pathlib import Path
+
+    agent_path = Path(agent_dir)
+    state_file = agent_path / "state.json"
+
+    if not state_file.exists():
+        raise FileNotFoundError(
+            f"Agent state file not found: {state_file}. "
+            f"Ensure the agent was saved with spawn_modular_agent(persist_to=...)"
+        )
+
+    agent = ModularAgent.load(
+        state_file,
+        llm=llm,
+        mcp_clients=mcp_clients,
+        toolkit=toolkit,
+    )
+
+    from ..scripts._observability import get_logger
+    get_logger().info(
+        f"[INFO] Agent {agent.name} ({agent.id}) 已从 {agent_dir} 加载，"
+        f"知识库: {agent.knowledge.document_count} 篇文档"
+    )
+
+    return agent

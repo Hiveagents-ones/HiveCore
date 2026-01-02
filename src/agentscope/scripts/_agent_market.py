@@ -156,12 +156,13 @@ def default_agent_profiles() -> dict[str, dict[str, Any]]:
             base_score=0.80,
             description="负责项目规划和任务分解",
         ),
+        # builder-agent 现在只处理通用/混合任务，专业任务由专业 Agent 处理
         "builder-agent": _profile(
             name="BuilderAgent",
             role="developer",
-            capabilities=["coding", "implementation", "fullstack", "api", "frontend", "backend"],
-            base_score=0.85,
-            description="负责代码实现和功能开发",
+            capabilities=["coding", "implementation", "fullstack"],
+            base_score=0.70,  # 降低优先级，让专业 Agent 优先
+            description="通用开发任务（混合前后端）",
         ),
         "reviewer-agent": _profile(
             name="ReviewerAgent",
@@ -173,8 +174,8 @@ def default_agent_profiles() -> dict[str, dict[str, Any]]:
         "qa-agent": _profile(
             name="QAAgent",
             role="qa",
-            capabilities=["testing", "validation", "acceptance"],
-            base_score=0.80,
+            capabilities=["testing", "validation", "acceptance", "test"],
+            base_score=0.90,  # 提高优先级
             description="负责测试和验收",
         ),
         "product-agent": _profile(
@@ -187,23 +188,23 @@ def default_agent_profiles() -> dict[str, dict[str, Any]]:
         "ux-agent": _profile(
             name="UXAgent",
             role="designer",
-            capabilities=["ui", "ux", "design", "prototyping"],
-            base_score=0.75,
+            capabilities=["ui", "ux", "design", "prototyping", "wireframe"],
+            base_score=0.90,  # 提高优先级
             description="负责用户体验和界面设计",
         ),
         "frontend-agent": _profile(
             name="FrontendAgent",
-            role="developer",
-            capabilities=["frontend", "react", "vue", "html", "css", "javascript"],
-            base_score=0.85,
+            role="frontend-developer",
+            capabilities=["frontend", "react", "vue", "html", "css", "javascript", "ui"],
+            base_score=0.90,  # 提高优先级
             description="负责前端开发",
         ),
         "backend-agent": _profile(
             name="BackendAgent",
-            role="developer",
-            capabilities=["backend", "api", "database", "python", "fastapi", "django"],
-            base_score=0.85,
-            description="负责后端开发",
+            role="backend-developer",
+            capabilities=["backend", "api", "database", "python", "fastapi", "django", "sql"],
+            base_score=0.90,  # 提高优先级
+            description="负责后端开发和数据库",
         ),
         "devops-agent": _profile(
             name="DevOpsAgent",
@@ -213,6 +214,70 @@ def default_agent_profiles() -> dict[str, dict[str, Any]]:
             description="负责部署和运维",
         ),
     }
+
+
+# ---------------------------------------------------------------------------
+# Requirement Type Routing
+# ---------------------------------------------------------------------------
+# Mapping from requirement type to preferred agent
+REQUIREMENT_TYPE_ROUTING: dict[str, str] = {
+    # Backend types
+    "database": "backend-agent",
+    "backend": "backend-agent",
+    "api": "backend-agent",
+    "server": "backend-agent",
+    # Frontend types
+    "frontend": "frontend-agent",
+    "ui": "frontend-agent",  # UI implementation goes to frontend
+    "page": "frontend-agent",
+    "component": "frontend-agent",
+    # Design types
+    "design": "ux-agent",
+    "ux": "ux-agent",
+    "wireframe": "ux-agent",
+    "prototype": "ux-agent",
+    # Testing types
+    "test": "qa-agent",
+    "testing": "qa-agent",
+    "qa": "qa-agent",
+    "validation": "qa-agent",
+    # DevOps types
+    "deployment": "devops-agent",
+    "ci-cd": "devops-agent",
+    "infrastructure": "devops-agent",
+}
+
+
+def route_requirement_to_agent(requirement: dict[str, Any]) -> str | None:
+    """Route a requirement to the most appropriate agent based on type.
+
+    This provides deterministic routing for common requirement types,
+    avoiding the score-based selection which can be unpredictable.
+
+    Args:
+        requirement: Requirement dictionary with 'type' or 'category' field
+
+    Returns:
+        str | None: Agent ID if routing rule exists, None otherwise
+    """
+    # Check requirement type
+    req_type = requirement.get("type", "").lower()
+    if req_type in REQUIREMENT_TYPE_ROUTING:
+        return REQUIREMENT_TYPE_ROUTING[req_type]
+
+    # Check requirement category
+    category = requirement.get("category", "").lower()
+    if category in REQUIREMENT_TYPE_ROUTING:
+        return REQUIREMENT_TYPE_ROUTING[category]
+
+    # Check requirement title for keywords
+    title = requirement.get("title", "").lower()
+    for keyword, agent_id in REQUIREMENT_TYPE_ROUTING.items():
+        if keyword in title:
+            return agent_id
+
+    # No routing rule matched, return None to use score-based selection
+    return None
 
 
 def score_agent_for_requirement(
@@ -258,4 +323,6 @@ __all__ = [
     "_profile",
     "default_agent_profiles",
     "score_agent_for_requirement",
+    "REQUIREMENT_TYPE_ROUTING",
+    "route_requirement_to_agent",
 ]

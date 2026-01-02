@@ -33,6 +33,32 @@ psycopg2-binary>=2.9.9
 celery[redis]>=5.3.0
 """
 
+BACKEND_PYPROJECT_TOML = '''[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "backend"
+version = "0.1.0"
+description = "Backend API service"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.109.0",
+    "uvicorn[standard]>=0.27.0",
+    "sqlalchemy>=2.0.0",
+    "pydantic>=2.5.0",
+    "python-multipart>=0.0.6",
+    "python-jose[cryptography]>=3.3.0",
+    "passlib[bcrypt]>=1.7.4",
+    "alembic>=1.13.0",
+    "psycopg2-binary>=2.9.9",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*"]
+'''
+
 BACKEND_INIT_APP = '''# -*- coding: utf-8 -*-
 """App package initialization."""
 '''
@@ -359,17 +385,31 @@ FRONTEND_INDEX_HTML = '''<!DOCTYPE html>
 def generate_project_scaffolding(
     workspace_dir: Path,
     project_type: str = "fullstack",
+    runtime_workspace: "Any | None" = None,
 ) -> list[str]:
     """Generate project base files.
 
     Args:
         workspace_dir: Target workspace directory
         project_type: Type of project (fullstack, frontend, backend)
+        runtime_workspace: RuntimeWorkspace for syncing files to container
 
     Returns:
         list: List of generated file paths
     """
     generated_files: list[str] = []
+
+    def _write_and_sync(file_path: Path, rel_path: str, content: str) -> None:
+        """Write file to host and sync to container if runtime_workspace is available."""
+        if not file_path.exists():
+            file_path.write_text(content, encoding="utf-8")
+            generated_files.append(rel_path)
+            # Sync to container
+            if runtime_workspace:
+                try:
+                    runtime_workspace.write_file(rel_path, content)
+                except Exception:
+                    pass  # Ignore container sync errors for scaffolding
 
     if project_type in ("fullstack", "backend"):
         # Backend files
@@ -378,55 +418,45 @@ def generate_project_scaffolding(
 
         # requirements.txt
         req_file = backend_dir / "requirements.txt"
-        if not req_file.exists():
-            req_file.write_text(BACKEND_REQUIREMENTS, encoding="utf-8")
-            generated_files.append("backend/requirements.txt")
+        _write_and_sync(req_file, "backend/requirements.txt", BACKEND_REQUIREMENTS)
 
         # Dockerfile
         dockerfile = backend_dir / "Dockerfile"
-        if not dockerfile.exists():
-            dockerfile.write_text(BACKEND_DOCKERFILE, encoding="utf-8")
-            generated_files.append("backend/Dockerfile")
+        _write_and_sync(dockerfile, "backend/Dockerfile", BACKEND_DOCKERFILE)
+
+        # pyproject.toml (for pip install -e . support)
+        pyproject_file = backend_dir / "pyproject.toml"
+        _write_and_sync(pyproject_file, "backend/pyproject.toml", BACKEND_PYPROJECT_TOML)
 
         # app/__init__.py
         app_dir = backend_dir / "app"
         app_dir.mkdir(parents=True, exist_ok=True)
         init_file = app_dir / "__init__.py"
-        if not init_file.exists():
-            init_file.write_text(BACKEND_INIT_APP, encoding="utf-8")
-            generated_files.append("backend/app/__init__.py")
+        _write_and_sync(init_file, "backend/app/__init__.py", BACKEND_INIT_APP)
 
         # routers/__init__.py
         routers_dir = app_dir / "routers"
         routers_dir.mkdir(parents=True, exist_ok=True)
         routers_init = routers_dir / "__init__.py"
-        if not routers_init.exists():
-            routers_init.write_text(BACKEND_INIT_ROUTERS, encoding="utf-8")
-            generated_files.append("backend/app/routers/__init__.py")
+        _write_and_sync(routers_init, "backend/app/routers/__init__.py", BACKEND_INIT_ROUTERS)
 
         # models/__init__.py
         models_dir = app_dir / "models"
         models_dir.mkdir(parents=True, exist_ok=True)
         models_init = models_dir / "__init__.py"
-        if not models_init.exists():
-            models_init.write_text(BACKEND_INIT_MODELS, encoding="utf-8")
-            generated_files.append("backend/app/models/__init__.py")
+        _write_and_sync(models_init, "backend/app/models/__init__.py", BACKEND_INIT_MODELS)
 
         # schemas/__init__.py
         schemas_dir = app_dir / "schemas"
         schemas_dir.mkdir(parents=True, exist_ok=True)
         schemas_init = schemas_dir / "__init__.py"
-        if not schemas_init.exists():
-            schemas_init.write_text(BACKEND_INIT_SCHEMAS, encoding="utf-8")
-            generated_files.append("backend/app/schemas/__init__.py")
+        _write_and_sync(schemas_init, "backend/app/schemas/__init__.py", BACKEND_INIT_SCHEMAS)
 
         # crud/__init__.py
         crud_dir = app_dir / "crud"
         crud_dir.mkdir(parents=True, exist_ok=True)
         crud_init = crud_dir / "__init__.py"
-        if not crud_init.exists():
-            crud_init.write_text(BACKEND_INIT_CRUD, encoding="utf-8")
-            generated_files.append("backend/app/crud/__init__.py")
+        _write_and_sync(crud_init, "backend/app/crud/__init__.py", BACKEND_INIT_CRUD)
 
     if project_type in ("fullstack", "frontend"):
         # Frontend files
@@ -438,94 +468,66 @@ def generate_project_scaffolding(
 
         # App.vue
         app_vue = src_dir / "App.vue"
-        if not app_vue.exists():
-            app_vue.write_text(FRONTEND_APP_VUE, encoding="utf-8")
-            generated_files.append("frontend/src/App.vue")
+        _write_and_sync(app_vue, "frontend/src/App.vue", FRONTEND_APP_VUE)
 
         # main.ts
         main_ts = src_dir / "main.ts"
-        if not main_ts.exists():
-            main_ts.write_text(FRONTEND_MAIN_TS, encoding="utf-8")
-            generated_files.append("frontend/src/main.ts")
+        _write_and_sync(main_ts, "frontend/src/main.ts", FRONTEND_MAIN_TS)
 
         # router/index.ts
         router_dir = src_dir / "router"
         router_dir.mkdir(parents=True, exist_ok=True)
         router_index = router_dir / "index.ts"
-        if not router_index.exists():
-            router_index.write_text(FRONTEND_ROUTER_INDEX, encoding="utf-8")
-            generated_files.append("frontend/src/router/index.ts")
+        _write_and_sync(router_index, "frontend/src/router/index.ts", FRONTEND_ROUTER_INDEX)
 
         # vite.config.ts
         vite_config = frontend_dir / "vite.config.ts"
-        if not vite_config.exists():
-            vite_config.write_text(FRONTEND_VITE_CONFIG, encoding="utf-8")
-            generated_files.append("frontend/vite.config.ts")
+        _write_and_sync(vite_config, "frontend/vite.config.ts", FRONTEND_VITE_CONFIG)
 
         # tsconfig.json
         tsconfig = frontend_dir / "tsconfig.json"
-        if not tsconfig.exists():
-            tsconfig.write_text(FRONTEND_TSCONFIG, encoding="utf-8")
-            generated_files.append("frontend/tsconfig.json")
+        _write_and_sync(tsconfig, "frontend/tsconfig.json", FRONTEND_TSCONFIG)
 
         # tsconfig.node.json
         tsconfig_node = frontend_dir / "tsconfig.node.json"
-        if not tsconfig_node.exists():
-            tsconfig_node.write_text(FRONTEND_TSCONFIG_NODE, encoding="utf-8")
-            generated_files.append("frontend/tsconfig.node.json")
+        _write_and_sync(tsconfig_node, "frontend/tsconfig.node.json", FRONTEND_TSCONFIG_NODE)
 
         # env.d.ts
         env_dts = src_dir / "env.d.ts"
-        if not env_dts.exists():
-            env_dts.write_text(FRONTEND_ENV_D_TS, encoding="utf-8")
-            generated_files.append("frontend/src/env.d.ts")
+        _write_and_sync(env_dts, "frontend/src/env.d.ts", FRONTEND_ENV_D_TS)
 
         # views/HomeView.vue
         views_dir = src_dir / "views"
         views_dir.mkdir(parents=True, exist_ok=True)
         home_view = views_dir / "HomeView.vue"
-        if not home_view.exists():
-            home_view.write_text(FRONTEND_HOME_VIEW, encoding="utf-8")
-            generated_files.append("frontend/src/views/HomeView.vue")
+        _write_and_sync(home_view, "frontend/src/views/HomeView.vue", FRONTEND_HOME_VIEW)
 
         # utils/auth.ts
         utils_dir = src_dir / "utils"
         utils_dir.mkdir(parents=True, exist_ok=True)
         auth_ts = utils_dir / "auth.ts"
-        if not auth_ts.exists():
-            auth_ts.write_text(FRONTEND_UTILS_AUTH, encoding="utf-8")
-            generated_files.append("frontend/src/utils/auth.ts")
+        _write_and_sync(auth_ts, "frontend/src/utils/auth.ts", FRONTEND_UTILS_AUTH)
 
         # Dockerfile
         dockerfile = frontend_dir / "Dockerfile"
-        if not dockerfile.exists():
-            dockerfile.write_text(FRONTEND_DOCKERFILE, encoding="utf-8")
-            generated_files.append("frontend/Dockerfile")
+        _write_and_sync(dockerfile, "frontend/Dockerfile", FRONTEND_DOCKERFILE)
 
         # nginx.conf
         nginx_conf = frontend_dir / "nginx.conf"
-        if not nginx_conf.exists():
-            nginx_conf.write_text(FRONTEND_NGINX_CONF, encoding="utf-8")
-            generated_files.append("frontend/nginx.conf")
+        _write_and_sync(nginx_conf, "frontend/nginx.conf", FRONTEND_NGINX_CONF)
 
         # package.json
         package_json = frontend_dir / "package.json"
-        if not package_json.exists():
-            package_json.write_text(FRONTEND_PACKAGE_JSON, encoding="utf-8")
-            generated_files.append("frontend/package.json")
+        _write_and_sync(package_json, "frontend/package.json", FRONTEND_PACKAGE_JSON)
 
         # index.html
         index_html = frontend_dir / "index.html"
-        if not index_html.exists():
-            index_html.write_text(FRONTEND_INDEX_HTML, encoding="utf-8")
-            generated_files.append("frontend/index.html")
+        _write_and_sync(index_html, "frontend/index.html", FRONTEND_INDEX_HTML)
 
     if project_type == "fullstack":
         # Docker Compose
         docker_compose = workspace_dir / "docker-compose.yml"
-        if not docker_compose.exists():
-            docker_compose.write_text(DOCKER_COMPOSE, encoding="utf-8")
-            generated_files.append("docker-compose.yml")
+        _write_and_sync(docker_compose, "docker-compose.yml", DOCKER_COMPOSE)
 
     # Initialize project memory with base technology decisions
     initialize_project_memory(workspace_dir, project_type)
@@ -844,9 +846,102 @@ def validate_project_completeness(workspace_dir: Path) -> dict[str, Any]:
     return result
 
 
+# ---------------------------------------------------------------------------
+# Scaffold Files Plan (for Blueprint integration)
+# ---------------------------------------------------------------------------
+
+# Base scaffold files with their content templates
+SCAFFOLD_FILES_TEMPLATES: dict[str, tuple[str, str]] = {
+    # Backend files
+    "backend/requirements.txt": (BACKEND_REQUIREMENTS, "Python 依赖配置"),
+    "backend/pyproject.toml": (BACKEND_PYPROJECT_TOML, "Python 项目配置"),
+    "backend/app/__init__.py": (BACKEND_INIT_APP, "后端 app 包初始化"),
+    "backend/app/routers/__init__.py": (BACKEND_INIT_ROUTERS, "路由包初始化"),
+    "backend/app/models/__init__.py": (BACKEND_INIT_MODELS, "模型包初始化"),
+    "backend/app/schemas/__init__.py": (BACKEND_INIT_SCHEMAS, "Schema 包初始化"),
+    "backend/app/crud/__init__.py": (BACKEND_INIT_CRUD, "CRUD 包初始化"),
+    "backend/Dockerfile": (BACKEND_DOCKERFILE, "后端 Docker 配置"),
+    # Frontend files
+    "frontend/package.json": (FRONTEND_PACKAGE_JSON, "前端依赖配置"),
+    "frontend/index.html": (FRONTEND_INDEX_HTML, "前端入口 HTML"),
+    "frontend/vite.config.ts": (FRONTEND_VITE_CONFIG, "Vite 构建配置"),
+    "frontend/tsconfig.json": (FRONTEND_TSCONFIG, "TypeScript 配置"),
+    "frontend/tsconfig.node.json": (FRONTEND_TSCONFIG_NODE, "TypeScript Node 配置"),
+    "frontend/src/App.vue": (FRONTEND_APP_VUE, "Vue 根组件"),
+    "frontend/src/main.ts": (FRONTEND_MAIN_TS, "前端入口文件"),
+    "frontend/src/router/index.ts": (FRONTEND_ROUTER_INDEX, "Vue Router 配置"),
+    "frontend/src/env.d.ts": (FRONTEND_ENV_D_TS, "TypeScript 环境声明"),
+    "frontend/src/views/HomeView.vue": (FRONTEND_HOME_VIEW, "首页视图"),
+    "frontend/src/utils/auth.ts": (FRONTEND_UTILS_AUTH, "认证工具函数"),
+    "frontend/Dockerfile": (FRONTEND_DOCKERFILE, "前端 Docker 配置"),
+    "frontend/nginx.conf": (FRONTEND_NGINX_CONF, "Nginx 配置"),
+    # Root files
+    "docker-compose.yml": (DOCKER_COMPOSE, "Docker Compose 配置"),
+}
+
+
+def get_scaffold_files_plan(
+    project_type: str = "fullstack",
+    existing_files: list[str] | None = None,
+) -> list[dict[str, Any]]:
+    """Get scaffold files as files_plan format for Blueprint.
+
+    This function returns the base scaffold files that should be created
+    by Claude Code in the container. Only returns files that don't already exist.
+
+    Args:
+        project_type: Type of project (fullstack, frontend, backend)
+        existing_files: List of files that already exist in workspace
+
+    Returns:
+        list: files_plan format list of scaffold files to create
+    """
+    existing = set(existing_files or [])
+    files_plan: list[dict[str, Any]] = []
+
+    for path, (content, description) in SCAFFOLD_FILES_TEMPLATES.items():
+        # Skip if file already exists
+        if path in existing:
+            continue
+
+        # Filter by project type
+        if project_type == "frontend" and path.startswith("backend/"):
+            continue
+        if project_type == "backend" and path.startswith("frontend/"):
+            continue
+
+        files_plan.append({
+            "path": path,
+            "description": f"[基础文件] {description}",
+            "action": "create",
+            "priority": 0,  # Highest priority - create first
+            "criteria_ids": [],  # No specific criteria
+            "is_scaffold": True,  # Mark as scaffold file
+            "content_template": content,  # Include template content
+        })
+
+    return files_plan
+
+
+def get_scaffold_file_content(path: str) -> str | None:
+    """Get the template content for a scaffold file.
+
+    Args:
+        path: File path (e.g., 'backend/requirements.txt')
+
+    Returns:
+        str | None: Template content or None if not a scaffold file
+    """
+    template = SCAFFOLD_FILES_TEMPLATES.get(path)
+    return template[0] if template else None
+
+
 __all__ = [
     "generate_project_scaffolding",
     "finalize_project",
     "validate_project_completeness",
     "initialize_project_memory",
+    "get_scaffold_files_plan",
+    "get_scaffold_file_content",
+    "SCAFFOLD_FILES_TEMPLATES",
 ]

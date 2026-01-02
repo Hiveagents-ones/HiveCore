@@ -87,6 +87,151 @@ class KnowledgeBaseConfig:
 
 
 @dataclass
+class DependencyConfig:
+    """Configuration for dependency management (language agnostic).
+
+    This configuration is defined by each Agent manifest to specify
+    how dependencies are managed for that particular language/framework.
+
+    Attributes:
+        dependency_file (`str`):
+            Path to the dependency file (e.g., "requirements.txt", "package.json").
+        install_command (`str`):
+            Command template to install all dependencies.
+            Use {file} as placeholder for dependency file path.
+        add_command (`str`):
+            Command template to add a single dependency.
+            Use {package} as placeholder for package name, {file} for dependency file.
+        file_format (`str`):
+            Format identifier for parsing (e.g., "pip-requirements", "npm-package").
+        lock_file (`str`):
+            Optional lock file path (e.g., "package-lock.json", "poetry.lock").
+    """
+
+    dependency_file: str = ""
+    install_command: str = ""
+    add_command: str = ""
+    file_format: str = ""
+    lock_file: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary."""
+        return {
+            "dependency_file": self.dependency_file,
+            "install_command": self.install_command,
+            "add_command": self.add_command,
+            "file_format": self.file_format,
+            "lock_file": self.lock_file,
+        }
+
+
+@dataclass
+class ValidationConfig:
+    """Configuration for code validation (language agnostic).
+
+    This configuration is defined by each Agent manifest to specify
+    how code is validated for that particular language/framework.
+
+    Attributes:
+        compile_commands (`list[str]`):
+            Commands to verify code compiles/imports correctly.
+        linter_commands (`list[str]`):
+            Commands to run linters/type checkers.
+        startup_command (`str`):
+            Command to start the application for runtime validation.
+        health_endpoint (`str`):
+            URL to check if application started successfully.
+        test_command (`str`):
+            Command to run tests.
+    """
+
+    compile_commands: list[str] = field(default_factory=list)
+    linter_commands: list[str] = field(default_factory=list)
+    startup_command: str = ""
+    health_endpoint: str = ""
+    test_command: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary."""
+        return {
+            "compile_commands": self.compile_commands,
+            "linter_commands": self.linter_commands,
+            "startup_command": self.startup_command,
+            "health_endpoint": self.health_endpoint,
+            "test_command": self.test_command,
+        }
+
+
+@dataclass
+class RepairConfig:
+    """Configuration for error repair strategies (language agnostic).
+
+    This configuration is defined by each Agent manifest to specify
+    how errors are repaired for that particular language/framework.
+
+    Attributes:
+        error_patterns (`dict[str, str]`):
+            Mapping of regex patterns to repair hints.
+            The hint will be included in the repair prompt.
+        sync_files (`list[str]`):
+            Files that should be synchronized when making repairs
+            (e.g., dependency files that need updating).
+        repair_guidelines (`list[str]`):
+            Guidelines to include in repair prompts.
+        common_fixes (`dict[str, str]`):
+            Mapping of error types to common fix templates.
+    """
+
+    error_patterns: dict[str, str] = field(default_factory=dict)
+    sync_files: list[str] = field(default_factory=list)
+    repair_guidelines: list[str] = field(default_factory=list)
+    common_fixes: dict[str, str] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary."""
+        return {
+            "error_patterns": self.error_patterns,
+            "sync_files": self.sync_files,
+            "repair_guidelines": self.repair_guidelines,
+            "common_fixes": self.common_fixes,
+        }
+
+
+@dataclass
+class BlueprintConfig:
+    """Configuration for blueprint generation (language agnostic).
+
+    This configuration is defined by each Agent manifest to specify
+    how blueprints are enhanced for that particular language/framework.
+
+    Attributes:
+        function_extraction_prompt (`str`):
+            Prompt template for extracting required functions from criteria.
+        required_patterns (`dict[str, list[str]]`):
+            Mapping of requirement types to required function patterns.
+            Use {entity} as placeholder for entity name.
+        file_patterns (`dict[str, str]`):
+            Mapping of file types to path patterns.
+        naming_conventions (`dict[str, str]`):
+            Naming conventions for the language/framework.
+    """
+
+    function_extraction_prompt: str = ""
+    required_patterns: dict[str, list[str]] = field(default_factory=dict)
+    file_patterns: dict[str, str] = field(default_factory=dict)
+    naming_conventions: dict[str, str] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary."""
+        return {
+            "function_extraction_prompt": self.function_extraction_prompt,
+            "required_patterns": self.required_patterns,
+            "file_patterns": self.file_patterns,
+            "naming_conventions": self.naming_conventions,
+        }
+
+
+@dataclass
 class PromptConfig:
     """Configuration for agent prompts.
 
@@ -99,6 +244,7 @@ class PromptConfig:
     collaboration_guidelines: list[str] = field(default_factory=list)
     prompt_template: str = ""
     variables: dict[str, str] = field(default_factory=dict)
+    repair_guidelines: list[str] = field(default_factory=list)
 
     def build_system_prompt(self) -> str:
         """Build complete system prompt from components."""
@@ -193,6 +339,18 @@ class AgentManifest:
 
     # Task board configuration
     task_board_config: TaskBoardConfig | None = None
+
+    # Dependency management configuration (language agnostic)
+    dependency_config: DependencyConfig | None = None
+
+    # Validation configuration (language agnostic)
+    validation_config: ValidationConfig | None = None
+
+    # Repair strategy configuration (language agnostic)
+    repair_config: RepairConfig | None = None
+
+    # Blueprint generation configuration (language agnostic)
+    blueprint_config: BlueprintConfig | None = None
 
     # Additional metadata
     description: str = ""
@@ -299,6 +457,53 @@ class AgentManifest:
                 collaboration_guidelines=prompt_data.get("collaboration_guidelines", []),
                 prompt_template=prompt_data.get("prompt_template", ""),
                 variables=prompt_data.get("variables", {}),
+                repair_guidelines=prompt_data.get("repair_guidelines", []),
+            )
+
+        # Parse dependency config
+        dependency_config: DependencyConfig | None = None
+        dep_data = data.get("dependency_config")
+        if dep_data and isinstance(dep_data, dict):
+            dependency_config = DependencyConfig(
+                dependency_file=dep_data.get("dependency_file", ""),
+                install_command=dep_data.get("install_command", ""),
+                add_command=dep_data.get("add_command", ""),
+                file_format=dep_data.get("file_format", ""),
+                lock_file=dep_data.get("lock_file", ""),
+            )
+
+        # Parse validation config
+        validation_config: ValidationConfig | None = None
+        val_data = data.get("validation_config")
+        if val_data and isinstance(val_data, dict):
+            validation_config = ValidationConfig(
+                compile_commands=val_data.get("compile_commands", []),
+                linter_commands=val_data.get("linter_commands", []),
+                startup_command=val_data.get("startup_command", ""),
+                health_endpoint=val_data.get("health_endpoint", ""),
+                test_command=val_data.get("test_command", ""),
+            )
+
+        # Parse repair config
+        repair_config: RepairConfig | None = None
+        rep_data = data.get("repair_config")
+        if rep_data and isinstance(rep_data, dict):
+            repair_config = RepairConfig(
+                error_patterns=rep_data.get("error_patterns", {}),
+                sync_files=rep_data.get("sync_files", []),
+                repair_guidelines=rep_data.get("repair_guidelines", []),
+                common_fixes=rep_data.get("common_fixes", {}),
+            )
+
+        # Parse blueprint config
+        blueprint_config: BlueprintConfig | None = None
+        bp_data = data.get("blueprint_config")
+        if bp_data and isinstance(bp_data, dict):
+            blueprint_config = BlueprintConfig(
+                function_extraction_prompt=bp_data.get("function_extraction_prompt", ""),
+                required_patterns=bp_data.get("required_patterns", {}),
+                file_patterns=bp_data.get("file_patterns", {}),
+                naming_conventions=bp_data.get("naming_conventions", {}),
             )
 
         # Parse knowledge configs
@@ -361,6 +566,10 @@ class AgentManifest:
             knowledge_configs=knowledge_configs,
             memory_config=memory_config,
             task_board_config=task_board_config,
+            dependency_config=dependency_config,
+            validation_config=validation_config,
+            repair_config=repair_config,
+            blueprint_config=blueprint_config,
             description=data.get("description", ""),
             metadata=data.get("metadata", {}),
             manifest_path=manifest_path,
@@ -416,6 +625,22 @@ class AgentManifest:
         # Add task board config if present
         if self.task_board_config:
             result["task_board_config"] = self.task_board_config.to_dict()
+
+        # Add dependency config if present
+        if self.dependency_config:
+            result["dependency_config"] = self.dependency_config.to_dict()
+
+        # Add validation config if present
+        if self.validation_config:
+            result["validation_config"] = self.validation_config.to_dict()
+
+        # Add repair config if present
+        if self.repair_config:
+            result["repair_config"] = self.repair_config.to_dict()
+
+        # Add blueprint config if present
+        if self.blueprint_config:
+            result["blueprint_config"] = self.blueprint_config.to_dict()
 
         return result
 

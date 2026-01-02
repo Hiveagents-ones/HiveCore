@@ -48,6 +48,106 @@
     "file_write",
     "shell_exec"
   ],
+  "dependency_config": {
+    "dependency_file": "requirements.txt",
+    "install_command": "pip install -r requirements.txt",
+    "add_command": "pip install {package}",
+    "file_format": "pip-requirements",
+    "lock_file": "",
+    "stdlib_modules": [
+      "os", "sys", "re", "json", "typing", "dataclasses", "pathlib",
+      "collections", "functools", "itertools", "datetime", "time",
+      "asyncio", "abc", "enum", "logging", "unittest", "io", "copy",
+      "math", "random", "hashlib", "base64", "uuid", "threading",
+      "multiprocessing", "subprocess", "shutil", "tempfile", "glob",
+      "contextlib", "warnings", "traceback", "inspect", "operator"
+    ],
+    "import_patterns": [
+      "^import\\s+(\\w+)",
+      "^from\\s+(\\w+)"
+    ]
+  },
+  "validation_config": {
+    "compile_commands": [
+      "python -m py_compile {file}"
+    ],
+    "linter_commands": [
+      "python -m flake8 {file} --max-line-length=120 --ignore=E501,W503"
+    ],
+    "startup_command": "uvicorn app.main:app --host 0.0.0.0 --port 8000",
+    "health_endpoint": "http://localhost:8000/health",
+    "test_command": "pytest tests/ -v"
+  },
+  "repair_config": {
+    "error_patterns": {
+      "cannot import name '(\\w+)' from partially initialized module '([^']+)'": "循环导入错误：模块 $2 中的 $1 存在循环依赖。使用 TYPE_CHECKING 延迟导入或重构模块结构。",
+      "ModuleNotFoundError: No module named '([^']+)'": "缺失模块 $1。检查 requirements.txt 并添加对应依赖。",
+      "ImportError: cannot import name '([^']+)' from '([^']+)'": "导入错误：$2 中不存在 $1。检查拼写或版本兼容性。",
+      "pydantic\\.errors\\.PydanticImportError.*BaseSettings.*moved to pydantic-settings": "Pydantic v2 迁移：BaseSettings 已移至 pydantic-settings 包。添加 pydantic-settings 到依赖，并修改导入为 from pydantic_settings import BaseSettings。",
+      "AttributeError: module '([^']+)' has no attribute '([^']+)'": "属性错误：模块 $1 没有属性 $2。可能是版本不兼容或拼写错误。",
+      "SyntaxError: invalid syntax": "语法错误：检查 Python 语法，特别是括号匹配、缩进、冒号等。",
+      "IndentationError": "缩进错误：Python 对缩进敏感，确保使用一致的缩进（推荐4个空格）。",
+      "TypeError: ([^(]+)\\(\\) got an unexpected keyword argument '([^']+)'": "参数错误：函数 $1 不接受关键字参数 $2。检查函数签名或 API 版本。",
+      "sqlalchemy\\.exc\\.OperationalError.*no such table": "数据库表不存在。确保已运行数据库迁移或创建表。",
+      "Address already in use": "端口被占用。更换端口或终止占用该端口的进程。"
+    },
+    "sync_files": [
+      "requirements.txt",
+      "app/__init__.py",
+      "app/models/__init__.py",
+      "app/schemas/__init__.py"
+    ],
+    "repair_guidelines": [
+      "修复循环导入时，优先使用 TYPE_CHECKING 条件导入",
+      "添加新依赖时，必须同步更新 requirements.txt",
+      "Pydantic v2 中 BaseSettings 需从 pydantic-settings 导入",
+      "SQLAlchemy 模型变更需同步更新 Pydantic schemas",
+      "修复导入错误时检查包名映射（如 pydantic_settings 对应 pydantic-settings）"
+    ],
+    "common_fixes": {
+      "circular_import": "使用 TYPE_CHECKING 延迟导入:\n```python\nfrom typing import TYPE_CHECKING\n\nif TYPE_CHECKING:\n    from .models import YourModel\n```",
+      "pydantic_v2_settings": "Pydantic v2 BaseSettings 迁移:\n1. 添加依赖: pydantic-settings\n2. 修改导入:\n```python\nfrom pydantic_settings import BaseSettings\n```",
+      "missing_init": "确保 __init__.py 正确导出:\n```python\nfrom .module import Class\n__all__ = ['Class']\n```"
+    }
+  },
+  "blueprint_config": {
+    "function_extraction_prompt": "基于 FastAPI 框架，为每个 API 端点生成对应的路由函数、Pydantic 模型和服务层函数。",
+    "required_patterns": {
+      "crud": [
+        "create_{entity}",
+        "get_{entity}",
+        "get_{entity}_list",
+        "update_{entity}",
+        "delete_{entity}"
+      ],
+      "auth": [
+        "login",
+        "logout",
+        "register",
+        "get_current_user",
+        "refresh_token"
+      ],
+      "status": [
+        "activate_{entity}",
+        "suspend_{entity}",
+        "get_{entity}_status"
+      ]
+    },
+    "file_patterns": {
+      "create_": "app/routers/{entity}.py",
+      "get_": "app/routers/{entity}.py",
+      "update_": "app/routers/{entity}.py",
+      "delete_": "app/routers/{entity}.py",
+      "login": "app/routers/auth.py",
+      "logout": "app/routers/auth.py"
+    },
+    "naming_conventions": {
+      "router_file": "app/routers/{entity}.py",
+      "model_file": "app/models/{entity}.py",
+      "schema_file": "app/schemas/{entity}.py",
+      "service_file": "app/services/{entity}.py"
+    }
+  },
   "metadata": {
     "framework": "fastapi",
     "category": "backend"

@@ -11,8 +11,20 @@ from agentscope._logging import logger
 from agentscope.mcp import MCPClientBase
 from agentscope.message import TextBlock
 from agentscope.tool import Toolkit, metaso_search, metaso_read, metaso_chat, ToolResponse
-from agentscope.tool import view_text_file, write_text_file, insert_text_file
+# [DEPRECATED] 原有文件工具已被 Claude Code 替代
+# from agentscope.tool import view_text_file, write_text_file, insert_text_file
 from agentscope.tool import execute_shell_command, execute_python_code
+
+# Claude Code integration
+from agentscope.scripts._claude_code import claude_code_edit, claude_code_chat
+
+# Task board tools (optional, may not be available yet)
+try:
+    from agentscope.scripts._task_board_tool import task_board_write
+    _TASK_BOARD_AVAILABLE = True
+except ImportError:
+    _TASK_BOARD_AVAILABLE = False
+    task_board_write = None  # type: ignore[assignment]
 
 
 class HiveToolkitManager:
@@ -35,6 +47,7 @@ class HiveToolkitManager:
         """
         toolkit = Toolkit()
         self._register_file_tools(toolkit, tools_filter)
+        self._register_task_board_tools(toolkit, tools_filter)
         self._register_execution_tools(toolkit, tools_filter)
         self._register_metaso_tools(toolkit, tools_filter)
         self._register_mcp_clients(toolkit, tools_filter)
@@ -47,42 +60,137 @@ class HiveToolkitManager:
         toolkit: Toolkit,
         tools_filter: set[str] | None = None,
     ) -> None:
-        """注册文件操作工具到 toolkit（类似 Claude Code 的增删改查能力）.
+        """注册文件操作工具到 toolkit.
+
+        [已升级] 使用 Claude Code CLI 替代原有的文件操作工具。
+        Claude Code 通过智谱清言 GLM-4.7 提供更强大的代码编辑能力。
 
         Args:
             toolkit: The toolkit to register tools to.
             tools_filter: Optional set of tool names to include.
         """
-        file_tools = [
-            ("view_text_file", view_text_file),
-            ("write_text_file", write_text_file),
-            ("insert_text_file", insert_text_file),
+        # ========== [DEPRECATED] 原有文件工具 ==========
+        # file_tools = [
+        #     ("view_text_file", view_text_file),
+        #     ("write_text_file", write_text_file),
+        #     ("insert_text_file", insert_text_file),
+        # ]
+        # # Filter tools if whitelist provided
+        # if tools_filter is not None:
+        #     file_tools = [(n, f) for n, f in file_tools if n in tools_filter]
+        # if not file_tools:
+        #     return
+        #
+        # if "file_ops" not in toolkit.groups:
+        #     toolkit.create_tool_group(
+        #         "file_ops",
+        #         description="文件操作工具（读取、写入、插入、编辑）",
+        #         active=True,
+        #         notes="""【文件操作工具使用指南】
+        # - view_text_file: 查看文件内容，支持指定行号范围 [start, end]
+        # - write_text_file: 创建新文件或覆盖现有文件，支持部分替换（指定 ranges=[start, end] 只替换指定行）
+        # - insert_text_file: 在指定行号处插入新内容
+        #
+        # 【编辑最佳实践】
+        # 1. 修改代码前，先用 view_text_file 查看相关代码段
+        # 2. 使用 write_text_file 的 ranges 参数进行精确替换，避免破坏其他代码
+        # 3. 确保替换内容包含完整的代码单元（完整的函数、类、语句等）
+        # 4. 编辑后再次使用 view_text_file 验证修改结果
+        # """,
+        #     )
+        # for _, func in file_tools:
+        #     toolkit.register_tool_function(func, group_name="file_ops")
+        # ========== [END DEPRECATED] ==========
+
+        # ========== [NEW] Claude Code 工具 ==========
+        claude_tools = [
+            ("claude_code_edit", claude_code_edit),
+            ("claude_code_chat", claude_code_chat),
         ]
         # Filter tools if whitelist provided
         if tools_filter is not None:
-            file_tools = [(n, f) for n, f in file_tools if n in tools_filter]
-        if not file_tools:
+            claude_tools = [(n, f) for n, f in claude_tools if n in tools_filter]
+        if not claude_tools:
             return
 
-        if "file_ops" not in toolkit.groups:
+        if "claude_code" not in toolkit.groups:
             toolkit.create_tool_group(
-                "file_ops",
-                description="文件操作工具（读取、写入、插入、编辑）",
+                "claude_code",
+                description="Claude Code 代码编辑工具（基于 GLM-4.7）",
                 active=True,
-                notes="""【文件操作工具使用指南】
-- view_text_file: 查看文件内容，支持指定行号范围 [start, end]
-- write_text_file: 创建新文件或覆盖现有文件，支持部分替换（指定 ranges=[start, end] 只替换指定行）
-- insert_text_file: 在指定行号处插入新内容
+                notes="""【Claude Code 工具使用指南】
 
-【编辑最佳实践】
-1. 修改代码前，先用 view_text_file 查看相关代码段
-2. 使用 write_text_file 的 ranges 参数进行精确替换，避免破坏其他代码
-3. 确保替换内容包含完整的代码单元（完整的函数、类、语句等）
-4. 编辑后再次使用 view_text_file 验证修改结果
+claude_code_edit: 执行代码编辑任务
+- prompt: 描述要进行的代码修改
+- workspace: 工作目录路径（可选）
+- 示例: claude_code_edit(prompt="在 utils.py 中添加一个计算平均值的函数")
+
+claude_code_chat: 询问代码相关问题
+- message: 问题或消息
+- workspace: 工作目录路径（可选）
+- 示例: claude_code_chat(message="解释 main.py 中的 process_data 函数")
+
+【使用建议】
+1. 提供清晰、具体的编辑指令
+2. 指定正确的工作目录以确保上下文正确
+3. 对于复杂任务，分步骤执行
+4. Claude Code 会自动读取文件、理解上下文、进行修改
 """,
             )
-        for _, func in file_tools:
-            toolkit.register_tool_function(func, group_name="file_ops")
+        for _, func in claude_tools:
+            toolkit.register_tool_function(func, group_name="claude_code")
+
+    def _register_task_board_tools(
+        self,
+        toolkit: Toolkit,
+        tools_filter: set[str] | None = None,
+    ) -> None:
+        """注册任务板工具到 toolkit。
+
+        Args:
+            toolkit: The toolkit to register tools to.
+            tools_filter: Optional set of tool names to include.
+        """
+        if not _TASK_BOARD_AVAILABLE:
+            return
+
+        task_tools = [
+            ("task_board_write", task_board_write),
+        ]
+
+        if tools_filter is not None:
+            task_tools = [(n, f) for n, f in task_tools if n in tools_filter]
+        if not task_tools:
+            return
+
+        if "task_board" not in toolkit.groups:
+            toolkit.create_tool_group(
+                "task_board",
+                description="任务板工具（跟踪执行进度）",
+                active=True,
+                notes="""【任务板使用指南】
+
+task_board_write: 更新任务进度
+- todos: 任务列表，每个任务包含 content, status, activeForm
+- status: pending(待处理), in_progress(进行中), completed(已完成)
+
+【使用规范】
+1. 开始工作前，先用 task_board_write 列出所有步骤
+2. 开始某个步骤时，将其标记为 in_progress
+3. 完成后立即标记为 completed
+4. 同一时间只有一个任务应该是 in_progress
+
+示例:
+task_board_write(todos=[
+    {"content": "分析需求", "status": "completed", "activeForm": "分析需求"},
+    {"content": "创建数据模型", "status": "in_progress", "activeForm": "创建数据模型"},
+    {"content": "实现API", "status": "pending", "activeForm": "实现API"},
+])
+""",
+            )
+
+        for _, func in task_tools:
+            toolkit.register_tool_function(func, group_name="task_board")
 
     def _register_execution_tools(
         self,

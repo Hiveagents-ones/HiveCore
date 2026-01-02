@@ -122,7 +122,7 @@ class AASystemAgent(AgentBase):
         intent = self._build_intent(utterance, requirements)
         baseline_cost, observed_cost, baseline_time, observed_time = self.metrics_resolver(utterance)
 
-        report = self.execution_loop.run_cycle(
+        report = await self.execution_loop.run_cycle_async(
             intent=intent,
             acceptance=acceptance,
             baseline_cost=baseline_cost,

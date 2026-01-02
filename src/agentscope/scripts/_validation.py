@@ -43,6 +43,112 @@ class CodeValidationResult:
 
 
 # ---------------------------------------------------------------------------
+# Syntax Validation (Compile-time checks)
+# ---------------------------------------------------------------------------
+def check_syntax_errors(
+    files: dict[str, str],
+) -> tuple[bool, list[str], list[str]]:
+    """Check for syntax errors in code files.
+
+    Performs static syntax checking:
+    - Python files: Uses ast.parse() to detect syntax errors
+    - JavaScript/TypeScript: Basic bracket matching and common errors
+    - Vue files: Checks script section syntax
+
+    Args:
+        files: Dict mapping file paths to content
+
+    Returns:
+        tuple: (is_valid, errors, warnings)
+    """
+    errors: list[str] = []
+    warnings: list[str] = []
+
+    for fpath, content in files.items():
+        ext = fpath.split(".")[-1].lower() if "." in fpath else ""
+
+        # Python syntax check
+        if ext == "py":
+            try:
+                ast.parse(content, filename=fpath)
+            except SyntaxError as e:
+                errors.append(f"{fpath}:{e.lineno}: Python 语法错误 - {e.msg}")
+
+        # JavaScript/TypeScript basic checks
+        elif ext in ("js", "ts", "jsx", "tsx"):
+            # Check bracket balance
+            brackets = {"(": ")", "[": "]", "{": "}"}
+            stack = []
+            line_num = 1
+            in_string = None
+            in_template = False
+
+            for i, char in enumerate(content):
+                if char == "\n":
+                    line_num += 1
+                    continue
+
+                # Track string context
+                if char in ('"', "'", "`") and (i == 0 or content[i - 1] != "\\"):
+                    if in_string == char:
+                        in_string = None
+                        if char == "`":
+                            in_template = False
+                    elif in_string is None:
+                        in_string = char
+                        if char == "`":
+                            in_template = True
+                    continue
+
+                if in_string:
+                    continue
+
+                if char in brackets:
+                    stack.append((char, line_num))
+                elif char in brackets.values():
+                    if stack and brackets.get(stack[-1][0]) == char:
+                        stack.pop()
+                    else:
+                        errors.append(f"{fpath}:{line_num}: 不匹配的括号 '{char}'")
+
+            if stack:
+                unmatched = stack[-1]
+                warnings.append(f"{fpath}:{unmatched[1]}: 未闭合的括号 '{unmatched[0]}'")
+
+            # Check for common syntax errors
+            common_errors = [
+                (r"^\s*else\s+if\s*\(", "else if 应该写成 'else if' 或 'elif' (Python)"),
+                (r",\s*\}", "对象/数组末尾有多余的逗号"),
+                (r"=>\s*\{[^}]*return[^;]*$", "箭头函数中 return 语句可能缺少分号"),
+            ]
+            for pattern, desc in common_errors:
+                matches = re.findall(pattern, content, re.MULTILINE)
+                if matches:
+                    warnings.append(f"{fpath}: {desc}")
+
+        # Vue single file component
+        elif ext == "vue":
+            # Extract script section and check
+            script_match = re.search(
+                r"<script[^>]*>(.*?)</script>",
+                content,
+                re.DOTALL | re.IGNORECASE,
+            )
+            if script_match:
+                script_content = script_match.group(1)
+                # Basic bracket check for script section
+                open_braces = script_content.count("{")
+                close_braces = script_content.count("}")
+                if open_braces != close_braces:
+                    warnings.append(
+                        f"{fpath}: Script 部分大括号不匹配 ({{ {open_braces} vs }} {close_braces})"
+                    )
+
+    is_valid = len(errors) == 0
+    return is_valid, errors, warnings
+
+
+# ---------------------------------------------------------------------------
 # Static Validation
 # ---------------------------------------------------------------------------
 def check_code_completeness(
@@ -439,7 +545,11 @@ async def validate_code_lightweight(
     *,
     verbose: bool = False,
 ) -> CodeValidationResult:
-    """Lightweight LLM-based code validation.
+    """Lightweight code validation with syntax check + LLM review.
+
+    Performs two-phase validation:
+    1. Static syntax check (fast, catches compile-time errors)
+    2. LLM-based semantic review (slow, catches logic issues)
 
     Args:
         llm: LLM model instance
@@ -452,6 +562,28 @@ async def validate_code_lightweight(
     """
     from ._llm_utils import call_llm_json
 
+    # Phase 1: Static syntax validation (fast, catches compile-time errors)
+    syntax_valid, syntax_errors, syntax_warnings = check_syntax_errors(files)
+
+    if verbose and syntax_errors:
+        from ._observability import get_logger
+        logger = get_logger()
+        logger.warn(f"[Validation] 语法检查发现 {len(syntax_errors)} 个错误:")
+        for err in syntax_errors[:5]:
+            logger.warn(f"  - {err}")
+
+    # If syntax errors exist, return early with failure
+    # This avoids wasting LLM tokens on broken code
+    if syntax_errors:
+        return CodeValidationResult(
+            is_valid=False,
+            score=0.3,  # Low score for syntax errors
+            errors=syntax_errors,
+            warnings=syntax_warnings,
+            details={"phase": "syntax_check", "skipped_llm": True},
+        )
+
+    # Phase 2: LLM-based semantic validation
     # Build file summary
     file_summaries: list[str] = []
     for fpath, content in files.items():
@@ -498,12 +630,19 @@ async def validate_code_lightweight(
             verbose=verbose,
         )
 
+        # Combine syntax warnings with LLM warnings
+        all_warnings = syntax_warnings + result.get("warnings", [])
+
         return CodeValidationResult(
             is_valid=result.get("is_valid", True),
             score=result.get("score", 0.8),
             errors=result.get("errors", []),
-            warnings=result.get("warnings", []),
-            details={"llm_summary": result.get("summary", "")},
+            warnings=all_warnings,
+            details={
+                "llm_summary": result.get("summary", ""),
+                "phase": "llm_validation",
+                "syntax_warnings_count": len(syntax_warnings),
+            },
         )
     except Exception as exc:
         if verbose:
@@ -512,7 +651,7 @@ async def validate_code_lightweight(
         return CodeValidationResult(
             is_valid=True,
             score=0.7,
-            warnings=[f"LLM validation failed: {exc}"],
+            warnings=syntax_warnings + [f"LLM validation failed: {exc}"],
         )
 
 
@@ -984,6 +1123,366 @@ async def run_linter_validation(
 
 
 # ---------------------------------------------------------------------------
+# Compile Validation (LLM-Driven, Language-Agnostic)
+# ---------------------------------------------------------------------------
+@dataclass
+class CompileCheckResult:
+    """Result of a single compile check."""
+
+    name: str
+    command: str
+    success: bool
+    output: str = ""
+    error_count: int = 0
+    details: list[str] = field(default_factory=list)
+
+
+COMPILE_STRATEGY_PROMPT = """你是一个编译/构建工具专家。根据以下项目文件结构，生成用于验证代码能否正确编译/导入的命令。
+
+## 项目文件
+{file_list}
+
+## 任务
+分析项目使用的技术栈，生成**编译验证命令**。这些命令应该能够检测：
+- 模块导入错误（缺少依赖、循环导入等）
+- 类型错误（TypeScript、Java 等静态类型语言）
+- 编译错误（Go、Rust、C++ 等编译型语言）
+
+### 常见技术栈对应的编译验证命令：
+- Python (FastAPI/Django/Flask): `python -c "from <module> import <entry>"`
+- TypeScript/JavaScript: `npx tsc --noEmit` 或 `npm run build`
+- Vue.js: `npx vue-tsc --noEmit`
+- React: `npx tsc --noEmit` 或 `npm run build`
+- Go: `go build ./...`
+- Rust: `cargo check`
+- Java/Kotlin: `mvn compile` 或 `gradle compileJava`
+- C/C++: `make` 或 `cmake --build .`
+
+### 输出格式
+```json
+{{
+  "detected_stack": {{
+    "languages": ["检测到的语言"],
+    "frameworks": ["检测到的框架"],
+    "build_tools": ["检测到的构建工具"]
+  }},
+  "compile_commands": [
+    {{
+      "name": "检查名称",
+      "command": "要执行的命令",
+      "working_dir": "工作目录（相对路径，如 backend 或 frontend）",
+      "timeout": 120,
+      "install_command": "安装依赖的命令（可选，如 npm install）",
+      "success_indicator": "成功时输出中应包含的文本（可选）",
+      "error_patterns": ["错误输出的正则模式"]
+    }}
+  ],
+  "reasoning": "为什么选择这些编译验证命令"
+}}
+```
+
+注意：
+- 只根据实际存在的文件来选择验证命令
+- 优先使用项目已配置的构建命令（检查 package.json scripts、Makefile 等）
+- 命令应该只做验证，不应该产生实际的构建产物（使用 --noEmit、check 等选项）
+- 对于需要安装依赖的项目，提供 install_command
+- error_patterns 应该是能匹配编译错误输出的正则表达式
+"""
+
+
+async def generate_compile_strategy(
+    llm: Any,
+    files: dict[str, str],
+    *,
+    verbose: bool = False,
+) -> dict[str, Any] | None:
+    """Use LLM to generate compile validation strategy based on project structure.
+
+    Args:
+        llm: LLM model instance
+        files: Dict mapping file paths to content
+        verbose: Whether to print debug info
+
+    Returns:
+        dict: Compile strategy with commands to run, or None if failed
+    """
+    from ._llm_utils import call_llm_json
+
+    # Filter out third-party files
+    source_files = _filter_source_files(files)
+
+    # Build file list summary
+    file_list = "\n".join(f"- {fpath}" for fpath in sorted(source_files.keys())[:50])
+    if len(source_files) > 50:
+        file_list += f"\n... 及其他 {len(source_files) - 50} 个源文件"
+
+    prompt = COMPILE_STRATEGY_PROMPT.format(file_list=file_list)
+
+    try:
+        result, _ = await call_llm_json(
+            llm,
+            [
+                {"role": "system", "content": "你是编译/构建工具专家，请根据项目结构选择合适的编译验证命令。"},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.1,
+            label="compile_strategy",
+            verbose=verbose,
+        )
+        return result
+    except Exception as exc:
+        if verbose:
+            from ._observability import get_logger
+            get_logger().debug(f"[Compile] Failed to generate compile strategy: {exc}")
+        return None
+
+
+def _parse_compile_output(
+    output: str,
+    error_patterns: list[str] | None,
+) -> tuple[int, list[str]]:
+    """Parse compile output to extract error count and details.
+
+    Args:
+        output: Command output
+        error_patterns: Regex patterns to match errors
+
+    Returns:
+        tuple: (error_count, detail_messages)
+    """
+    errors = 0
+    details: list[str] = []
+
+    lines = output.split("\n")
+
+    # Default error patterns for common languages
+    default_patterns = [
+        r"error[:\s]",  # Generic error
+        r"Error[:\s]",
+        r"ERROR[:\s]",
+        r"failed",
+        r"FAILED",
+        r"cannot find",
+        r"not found",
+        r"undefined",
+        r"No module named",
+        r"ModuleNotFoundError",
+        r"ImportError",
+        r"SyntaxError",
+        r"error TS\d+",  # TypeScript
+        r"error\[E\d+\]",  # Rust
+        r"error: ",  # Go, C++
+    ]
+
+    patterns = error_patterns or default_patterns
+
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+
+        for pattern in patterns:
+            if re.search(pattern, line, re.IGNORECASE):
+                errors += 1
+                if len(details) < 10:
+                    details.append(line[:200])
+                break
+
+    return errors, details
+
+
+async def run_compile_validation(
+    runtime_workspace: "RuntimeWorkspace",
+    llm: Any,
+    files: dict[str, str],
+    *,
+    verbose: bool = False,
+) -> CodeValidationResult:
+    """Run LLM-driven compile/build validation on project.
+
+    This is a language-agnostic compile validation that:
+    1. Uses LLM to analyze project structure and detect tech stack
+    2. Generates appropriate compile/import validation commands
+    3. Executes commands in sandbox
+    4. Parses output and returns structured results
+
+    Args:
+        runtime_workspace: RuntimeWorkspace instance for execution
+        llm: LLM model instance
+        files: Dict mapping file paths to content
+        verbose: Whether to print debug info
+
+    Returns:
+        CodeValidationResult: Compile validation results
+    """
+    if not runtime_workspace or not runtime_workspace.is_initialized:
+        return CodeValidationResult(
+            is_valid=True,
+            score=1.0,
+            warnings=["Compile validation skipped: no runtime"],
+            details={"compile_check": False, "reason": "no_runtime"},
+        )
+
+    from ._observability import get_logger
+    logger = get_logger()
+
+    # Step 1: Generate compile strategy using LLM
+    if verbose:
+        logger.debug("[Compile] 生成编译验证策略...")
+
+    strategy = await generate_compile_strategy(llm, files, verbose=verbose)
+
+    if not strategy or not strategy.get("compile_commands"):
+        return CodeValidationResult(
+            is_valid=True,
+            score=0.8,
+            warnings=["Could not determine appropriate compile commands for this project"],
+            details={"compile_check": False, "reason": "no_strategy"},
+        )
+
+    # Step 2: Execute compile commands
+    commands = strategy.get("compile_commands", [])
+    check_results: list[CompileCheckResult] = []
+    all_errors: list[str] = []
+
+    if verbose:
+        detected = strategy.get("detected_stack", {})
+        logger.debug(f"[Compile] 检测到技术栈: {detected.get('languages', [])} / {detected.get('frameworks', [])}")
+        logger.debug(f"[Compile] 执行 {len(commands)} 个编译验证...")
+
+    for cmd_spec in commands:
+        cmd_name = cmd_spec.get("name", "compile")
+        command = cmd_spec.get("command", "")
+        working_dir = cmd_spec.get("working_dir", "")
+        timeout = cmd_spec.get("timeout", 120)
+        install_cmd = cmd_spec.get("install_command")
+        success_indicator = cmd_spec.get("success_indicator")
+        error_patterns = cmd_spec.get("error_patterns")
+
+        if not command:
+            continue
+
+        if verbose:
+            logger.debug(f"[Compile]   - {cmd_name}: {command[:60]}...")
+
+        try:
+            # Install dependencies first if needed
+            if install_cmd:
+                if verbose:
+                    logger.debug(f"[Compile]     安装依赖: {install_cmd[:50]}...")
+                runtime_workspace.execute_command(
+                    install_cmd,
+                    working_dir=working_dir if working_dir else None,
+                    timeout=180,
+                )
+
+            # Run compile command
+            result = runtime_workspace.execute_command(
+                command,
+                working_dir=working_dir if working_dir else None,
+                timeout=timeout,
+            )
+
+            output = result.get("output", "")
+            error_output = result.get("error", "")
+            success = result.get("success", False)
+            combined_output = output + "\n" + error_output
+
+            # Check for success indicator
+            if success_indicator and success_indicator in combined_output:
+                success = True
+
+            # Parse errors
+            error_count, error_details = _parse_compile_output(
+                combined_output, error_patterns
+            )
+
+            # If command succeeded and no errors found, it's a pass
+            if success and error_count == 0:
+                check_results.append(CompileCheckResult(
+                    name=cmd_name,
+                    command=command,
+                    success=True,
+                    output="编译验证通过",
+                ))
+                if verbose:
+                    logger.debug(f"[Compile]     ✓ {cmd_name} 通过")
+            else:
+                all_errors.append(f"{cmd_name}: {error_count} 个错误")
+                all_errors.extend(error_details[:3])
+
+                check_results.append(CompileCheckResult(
+                    name=cmd_name,
+                    command=command,
+                    success=False,
+                    output=combined_output[:1000],
+                    error_count=error_count,
+                    details=error_details,
+                ))
+                if verbose:
+                    logger.warn(f"[Compile]     ✗ {cmd_name} 失败: {error_count} 个错误")
+
+        except Exception as exc:
+            check_results.append(CompileCheckResult(
+                name=cmd_name,
+                command=command,
+                success=False,
+                output="",
+                error_count=1,
+                details=[f"执行失败: {exc}"],
+            ))
+            all_errors.append(f"{cmd_name}: 执行失败 - {exc}")
+
+    # Step 3: Calculate score
+    if not check_results:
+        return CodeValidationResult(
+            is_valid=True,
+            score=0.8,
+            warnings=["No compile checks were executed"],
+            details={"compile_check": False},
+        )
+
+    total_checks = len(check_results)
+    passed_checks = sum(1 for c in check_results if c.success)
+    total_errors = sum(c.error_count for c in check_results)
+
+    # Base score from pass rate
+    if total_checks > 0:
+        base_score = passed_checks / total_checks
+    else:
+        base_score = 1.0
+
+    # Additional penalty for error count
+    error_penalty = min(0.3, total_errors * 0.02)
+    score = max(0.0, base_score - error_penalty)
+
+    is_valid = all(c.success for c in check_results)
+
+    return CodeValidationResult(
+        is_valid=is_valid,
+        score=score,
+        errors=all_errors,
+        warnings=[],
+        details={
+            "compile_check": True,
+            "detected_stack": strategy.get("detected_stack", {}),
+            "checks_run": total_checks,
+            "checks_passed": passed_checks,
+            "total_errors": total_errors,
+            "check_results": [
+                {
+                    "name": c.name,
+                    "success": c.success,
+                    "errors": c.error_count,
+                    "details": c.details[:3],
+                }
+                for c in check_results
+            ],
+        },
+    )
+
+
+# ---------------------------------------------------------------------------
 # Layered Validation Pipeline
 # ---------------------------------------------------------------------------
 async def layered_code_validation(
@@ -998,14 +1497,18 @@ async def layered_code_validation(
     """Run layered code validation pipeline.
 
     Validation layers:
-    1. Static analysis (syntax, completeness)
-    2. Import validation (if runtime available)
-    3. LLM-driven linter validation (if runtime available)
-    4. LLM lightweight review
+    1. Static analysis (syntax, completeness) - weight 15%
+    2. Import validation (if runtime available) - weight 15%
+    3. LLM-driven linter validation (if runtime available) - weight 30%
+    4. **Compile validation** (real build test) - weight 40%
+
+    Note: LLM code review layer was removed because it caused false negatives
+    by judging code completeness from summaries instead of actual execution.
+    Functional validation is now handled by QA acceptance phase.
 
     Args:
         runtime_workspace: RuntimeWorkspace instance (optional)
-        llm: LLM model instance
+        llm: LLM model instance (used for linter/compile strategy generation)
         files: Dict mapping file paths to content
         requirement_summary: Brief description of requirements
         tech_stack_info: Project memory tech stack context for linter selection
@@ -1072,38 +1575,62 @@ async def layered_code_validation(
         layer_results.append(("linter", 0.7))  # Neutral score, not failing
         details["linter"] = {"skipped": True, "reason": "no_runtime"}
 
-    # Layer 4: LLM lightweight review
-    if verbose:
-        logger.debug("[Validation] Running LLM review...")
-    llm_result = await validate_code_lightweight(
-        llm, source_files, requirement_summary, verbose=verbose
-    )
-    all_errors.extend(llm_result.errors)
-    all_warnings.extend(llm_result.warnings)
-    layer_results.append(("llm", llm_result.score))
-    details["llm"] = llm_result.details
+    # Layer 4: Compile validation (LLM-driven, language-agnostic)
+    if runtime_workspace and runtime_workspace.is_initialized:
+        if verbose:
+            logger.debug("[Validation] Running compile validation (LLM-driven)...")
+        compile_result = await run_compile_validation(
+            runtime_workspace, llm, files, verbose=verbose  # LLM-driven compile strategy
+        )
+        all_errors.extend(compile_result.errors)
+        all_warnings.extend(compile_result.warnings)
+        layer_results.append(("compile", compile_result.score))
+        details["compile"] = compile_result.details
+
+        # If compile fails, this is critical - early exit with low score
+        if not compile_result.is_valid:
+            if verbose:
+                logger.warn(f"[Validation] ✗ 编译验证失败 - 代码无法运行")
+                for err in compile_result.errors[:3]:
+                    logger.warn(f"[Validation]   - {err}")
+    else:
+        if verbose:
+            logger.debug("[Validation] Compile validation skipped (no runtime)")
+        all_warnings.append("Compile validation skipped: no RuntimeWorkspace")
+        layer_results.append(("compile", 0.7))  # Neutral score
+        details["compile"] = {"skipped": True, "reason": "no_runtime"}
+
+    # Layer 5: LLM lightweight review - REMOVED
+    # LLM code review based on summaries causes false negatives.
+    # Real validation should be runtime-based (run code, check results).
+    # Compile validation (Layer 4) already verifies code can run.
+    # QA acceptance (separate phase) verifies functional requirements.
 
     # Calculate combined score (weighted average)
-    # Weights: static=0.2, import=0.2, linter=0.3, llm=0.3
+    # Weights adjusted after removing LLM review layer
+    # Compile validation is critical - highest weight
     weight_map = {
-        "static": 0.2,
-        "import": 0.2,
-        "linter": 0.3,
-        "llm": 0.3,
+        "static": 0.15,
+        "import": 0.15,
+        "linter": 0.30,
+        "compile": 0.40,  # Most important - real build test
     }
 
     if layer_results:
         # Normalize weights based on which layers ran
-        total_weight = sum(weight_map.get(name, 0.25) for name, _ in layer_results)
+        total_weight = sum(weight_map.get(name, 0.2) for name, _ in layer_results)
         combined_score = sum(
-            score * (weight_map.get(name, 0.25) / total_weight)
+            score * (weight_map.get(name, 0.2) / total_weight)
             for name, score in layer_results
         )
     else:
         combined_score = 1.0
 
     # Determine validity
-    is_valid = len(all_errors) == 0 and combined_score >= 0.6
+    # If compile validation failed, code is invalid regardless of score
+    compile_passed = details.get("compile", {}).get("skipped", True) or \
+                     all(c.get("success", True) for c in details.get("compile", {}).get("check_results", []))
+    is_valid = len(all_errors) == 0 and combined_score >= 0.6 and compile_passed
 
     return CodeValidationResult(
         is_valid=is_valid,
@@ -1117,11 +1644,14 @@ async def layered_code_validation(
 __all__ = [
     "CodeValidationResult",
     "LinterCheckResult",
+    "CompileCheckResult",
     "check_code_completeness",
     "run_static_validation",
     "run_import_validation",
     "run_linter_validation",
+    "run_compile_validation",
     "generate_linter_strategy",
+    "generate_compile_strategy",
     "extract_file_summary",
     "validate_code_lightweight",
     "validate_code_with_llm",

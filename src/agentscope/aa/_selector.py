@@ -2,6 +2,7 @@
 """Selection logic for AA (AssistantAgent) orchestration."""
 from __future__ import annotations
 
+import re
 from dataclasses import asdict
 from datetime import datetime, timezone
 from typing import Sequence
@@ -19,10 +20,184 @@ from ._types import (
     SelectionDecision,
     SelectionRound,
 )
+from ._vocabulary import normalize_skills, normalize_domains
+
+
+def _extract_keywords(text: str) -> set[str]:
+    """Extract keywords from text for matching.
+
+    Extracts both Chinese and English words, filtering common stopwords.
+    """
+    if not text:
+        return set()
+
+    # 中英文分词
+    # 英文：按空格和标点分割
+    # 中文：按字符分割（简单实现）
+    words = set()
+
+    # 英文单词
+    english_words = re.findall(r"[a-zA-Z]+", text.lower())
+    words.update(english_words)
+
+    # 中文：提取2-4字词组（简单的n-gram）
+    chinese_chars = re.findall(r"[\u4e00-\u9fff]+", text)
+    for segment in chinese_chars:
+        # 添加完整片段
+        if len(segment) >= 2:
+            words.add(segment)
+        # 添加2-gram
+        for i in range(len(segment) - 1):
+            words.add(segment[i : i + 2])
+        # 添加3-gram
+        for i in range(len(segment) - 2):
+            words.add(segment[i : i + 3])
+
+    # 过滤常见停用词
+    stopwords = {
+        "the",
+        "a",
+        "an",
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+        "been",
+        "being",
+        "have",
+        "has",
+        "had",
+        "do",
+        "does",
+        "did",
+        "will",
+        "would",
+        "could",
+        "should",
+        "may",
+        "might",
+        "must",
+        "shall",
+        "can",
+        "and",
+        "or",
+        "but",
+        "if",
+        "then",
+        "else",
+        "when",
+        "at",
+        "by",
+        "for",
+        "with",
+        "about",
+        "against",
+        "between",
+        "into",
+        "through",
+        "during",
+        "before",
+        "after",
+        "above",
+        "below",
+        "to",
+        "from",
+        "up",
+        "down",
+        "in",
+        "out",
+        "on",
+        "off",
+        "over",
+        "under",
+        "again",
+        "further",
+        "once",
+        "here",
+        "there",
+        "all",
+        "each",
+        "both",
+        "this",
+        "that",
+        "these",
+        "those",
+        "的",
+        "是",
+        "在",
+        "了",
+        "和",
+        "与",
+        "及",
+        "或",
+        "不",
+        "也",
+        "就",
+        "都",
+        "而",
+        "及",
+        "着",
+        "把",
+        "被",
+        "让",
+        "给",
+        "向",
+        "对",
+        "从",
+        "以",
+        "为",
+        "等",
+        "能",
+        "可",
+        "会",
+        "要",
+        "用",
+        "有",
+        "个",
+        "这",
+        "那",
+        "它",
+        "他",
+        "她",
+        "我",
+        "你",
+    }
+
+    return words - stopwords
+
+
+def _compute_description_match(
+    agent_description: str,
+    requirement_notes: str | None,
+) -> float:
+    """Compute keyword match score between agent description and requirement.
+
+    Returns:
+        Float between 0.0 and 1.0 indicating match degree.
+    """
+    if not agent_description or not requirement_notes:
+        return 0.0
+
+    agent_keywords = _extract_keywords(agent_description)
+    req_keywords = _extract_keywords(requirement_notes)
+
+    if not req_keywords:
+        return 0.0
+
+    # 计算需求关键词在 Agent 简介中的覆盖率
+    matched = agent_keywords & req_keywords
+    coverage = len(matched) / len(req_keywords)
+
+    return min(1.0, coverage)
 
 
 class RequirementFitScorer:
-    """Compute requirement fit score and explanation."""
+    """Compute requirement fit score and explanation.
+
+    Uses vocabulary normalization for skills and domains to handle synonyms
+    (e.g., "后端" matches "backend", "python3" matches "python").
+    """
 
     tracked_fields = (
         "skills",
@@ -32,6 +207,9 @@ class RequirementFitScorer:
         "regions",
         "compliance_tags",
     )
+
+    # Fields that should be normalized before matching
+    normalized_fields = {"skills", "domains"}
 
     def __init__(self, config: AAScoringConfig) -> None:
         self.config = config
@@ -43,6 +221,22 @@ class RequirementFitScorer:
         if total <= 0:
             raise ValueError("Requirement weight sum must be positive")
         return {k: v / total for k, v in weights.items()}
+
+    def _normalize_field(self, field: str, values: set[str]) -> set[str]:
+        """Normalize field values based on field type.
+
+        Args:
+            field: Field name (skills, domains, etc.)
+            values: Set of values to normalize.
+
+        Returns:
+            Normalized set of values.
+        """
+        if field == "skills":
+            return normalize_skills(values)
+        elif field == "domains":
+            return normalize_domains(values)
+        return values
 
     def score(
         self,
@@ -61,9 +255,19 @@ class RequirementFitScorer:
             if not req_values:
                 continue
             cap_values: set[str] = getattr(capabilities, field)
-            hit = req_values & cap_values
-            miss = req_values - cap_values
-            coverage = len(hit) / len(req_values) if req_values else 0.0
+
+            # Normalize skills and domains for better matching
+            if field in self.normalized_fields:
+                req_normalized = self._normalize_field(field, req_values)
+                cap_normalized = self._normalize_field(field, cap_values)
+                hit = req_normalized & cap_normalized
+                miss = req_normalized - cap_normalized
+                coverage = len(hit) / len(req_normalized) if req_normalized else 0.0
+            else:
+                hit = req_values & cap_values
+                miss = req_values - cap_values
+                coverage = len(hit) / len(req_values) if req_values else 0.0
+
             matched[field] = hit
             missing[field] = miss
             partial[field] = coverage
@@ -76,6 +280,23 @@ class RequirementFitScorer:
                     f" (weight={weight:.2f})."
                 ),
             )
+
+        # Agent 简介与需求描述的匹配
+        description_weight = weights.get("description", 0.0)
+        if description_weight > 0 and (
+            capabilities.description or requirement.notes
+        ):
+            desc_score = _compute_description_match(
+                capabilities.description,
+                requirement.notes,
+            )
+            partial["description"] = desc_score
+            total_score += description_weight * desc_score
+            if desc_score > 0:
+                rationales.append(
+                    f"description: keyword match score {desc_score:.2f}"
+                    f" (weight={description_weight:.2f})."
+                )
 
         total_score = max(0.0, min(1.0, total_score))
 

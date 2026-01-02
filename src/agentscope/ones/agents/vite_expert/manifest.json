@@ -48,6 +48,102 @@
     "file_write",
     "shell_exec"
   ],
+  "dependency_config": {
+    "dependency_file": "package.json",
+    "install_command": "npm install",
+    "add_command": "npm install {package}",
+    "file_format": "npm-package",
+    "lock_file": "package-lock.json",
+    "stdlib_modules": [
+      "fs", "path", "http", "https", "url", "util", "events",
+      "stream", "buffer", "crypto", "os", "child_process", "cluster"
+    ],
+    "import_patterns": [
+      "require\\(['\"]([^'\"]+)['\"]\\)",
+      "from\\s+['\"]([^'\"]+)['\"]",
+      "import\\s+.*\\s+from\\s+['\"]([^'\"]+)['\"]"
+    ]
+  },
+  "validation_config": {
+    "compile_commands": [
+      "npx tsc --noEmit"
+    ],
+    "linter_commands": [
+      "npx eslint {file}"
+    ],
+    "startup_command": "npm run dev -- --host 0.0.0.0 --port 3000",
+    "health_endpoint": "http://localhost:3000",
+    "test_command": "npm test"
+  },
+  "repair_config": {
+    "error_patterns": {
+      "Cannot find module '([^']+)'": "模块 $1 未安装。运行 npm install $1 添加依赖。",
+      "Module not found: Error: Can't resolve '([^']+)'": "无法解析模块 $1。检查导入路径或安装对应包。",
+      "SyntaxError: Cannot use import statement outside a module": "模块语法错误。确保 package.json 中设置 \"type\": \"module\" 或使用 .mjs 扩展名。",
+      "error TS(\\d+)": "TypeScript 编译错误 TS$1。检查类型定义和 tsconfig.json 配置。",
+      "EADDRINUSE.*:(\\d+)": "端口 $1 被占用。更换端口或终止占用该端口的进程。",
+      "ENOENT.*package\\.json": "package.json 不存在。运行 npm init -y 初始化项目。",
+      "Could not resolve '([^']+)'": "Vite 无法解析 $1。检查 vite.config.ts 中的 alias 配置或安装对应包。",
+      "Failed to load PostCSS config": "PostCSS 配置加载失败。检查 postcss.config.js 文件。",
+      "\\[plugin:vite:react-babel\\]": "React Babel 插件错误。检查 JSX 语法和 @vitejs/plugin-react 配置。"
+    },
+    "sync_files": [
+      "package.json",
+      "vite.config.ts",
+      "tsconfig.json",
+      "src/main.tsx"
+    ],
+    "repair_guidelines": [
+      "添加新依赖后需运行 npm install",
+      "TypeScript 类型错误需检查 tsconfig.json 配置",
+      "路径别名需在 vite.config.ts 和 tsconfig.json 中同时配置",
+      "React 组件必须以大写字母开头",
+      "环境变量必须以 VITE_ 前缀命名"
+    ],
+    "common_fixes": {
+      "module_not_found": "安装缺失的 npm 包:\n```bash\nnpm install package-name\n```",
+      "typescript_error": "TypeScript 配置问题:\n1. 检查 tsconfig.json\n2. 确保安装了 @types/xxx 类型包",
+      "path_alias": "配置路径别名:\n```typescript\n// vite.config.ts\nresolve: {\n  alias: {\n    '@': path.resolve(__dirname, './src'),\n  },\n}\n```\n```json\n// tsconfig.json\n\"paths\": {\n  \"@/*\": [\"./src/*\"]\n}\n```"
+    }
+  },
+  "blueprint_config": {
+    "function_extraction_prompt": "基于 Vite + React/Vue 框架，为每个功能生成对应的组件、hooks、服务层函数和路由配置。",
+    "required_patterns": {
+      "crud": [
+        "{Entity}List",
+        "{Entity}Detail",
+        "{Entity}Form",
+        "use{Entity}",
+        "{entity}Service"
+      ],
+      "auth": [
+        "LoginForm",
+        "RegisterForm",
+        "useAuth",
+        "authService"
+      ],
+      "layout": [
+        "Header",
+        "Sidebar",
+        "Footer",
+        "Layout"
+      ]
+    },
+    "file_patterns": {
+      "List": "src/components/{entity}/{Entity}List.tsx",
+      "Detail": "src/components/{entity}/{Entity}Detail.tsx",
+      "Form": "src/components/{entity}/{Entity}Form.tsx",
+      "use": "src/hooks/use{Entity}.ts",
+      "Service": "src/services/{entity}Service.ts"
+    },
+    "naming_conventions": {
+      "component_file": "src/components/{entity}/{Entity}.tsx",
+      "hook_file": "src/hooks/use{Entity}.ts",
+      "service_file": "src/services/{entity}Service.ts",
+      "page_file": "src/pages/{Entity}Page.tsx",
+      "style_file": "src/components/{entity}/{Entity}.module.css"
+    }
+  },
   "metadata": {
     "framework": "vite",
     "category": "frontend"

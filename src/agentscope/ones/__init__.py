@@ -46,7 +46,29 @@ from .artifacts import (
     WebDeployAdapter,
     MediaPackageAdapter,
 )
-from .execution import ExecutionLoop, ExecutionReport, ExecutionContext, AgentOutput
+from .execution import (
+    ExecutionLoop,
+    ExecutionReport,
+    ExecutionContext,
+    AgentOutput,
+    ExecutionEnhancer,
+)
+from .repair_engine import (
+    RepairEngine,
+    RepairAction,
+    FilePatch,
+    RepairResult,
+)
+from .dependency_sync import (
+    DependencySynchronizer,
+    DependencyInfo,
+    SyncResult,
+)
+from .blueprint_enhancer import (
+    BlueprintEnhancer,
+    EnhancedBlueprint,
+    RequiredFunction,
+)
 from .collaboration import (
     CollaborativeAgent,
     CollaborativeExecutor,
@@ -93,6 +115,10 @@ from .manifest import (
     KnowledgeBaseConfig,
     MemoryConfig,
     TaskBoardConfig,
+    DependencyConfig,
+    ValidationConfig,
+    RepairConfig,
+    BlueprintConfig,
     load_manifests_from_directory,
 )
 from .sandbox import (
@@ -144,6 +170,7 @@ from ._modular_agent import (
     AgentPrompt,
     create_modular_agent_from_manifest,
     spawn_modular_agent,
+    load_modular_agent,
 )
 # File tracking and validation (new modules)
 from .file_tracking import (
@@ -227,6 +254,20 @@ __all__ = [
     "ExecutionReport",
     "ExecutionContext",
     "AgentOutput",
+    "ExecutionEnhancer",
+    # Repair Engine
+    "RepairEngine",
+    "RepairAction",
+    "FilePatch",
+    "RepairResult",
+    # Dependency Sync
+    "DependencySynchronizer",
+    "DependencyInfo",
+    "SyncResult",
+    # Blueprint Enhancer
+    "BlueprintEnhancer",
+    "EnhancedBlueprint",
+    "RequiredFunction",
     "CollaborativeAgent",
     "CollaborativeExecutor",
     "CollaborationMessage",
@@ -278,6 +319,10 @@ __all__ = [
     "KnowledgeBaseConfig",
     "MemoryConfig",
     "TaskBoardConfig",
+    "DependencyConfig",
+    "ValidationConfig",
+    "RepairConfig",
+    "BlueprintConfig",
     "load_manifests_from_directory",
     "SandboxExecutor",
     "SandboxExecutionResult",
@@ -320,6 +365,7 @@ __all__ = [
     "AgentPrompt",
     "create_modular_agent_from_manifest",
     "spawn_modular_agent",
+    "load_modular_agent",
     # Built-in Agents
     "BUILTIN_AGENTS_DIR",
     "load_builtin_agent_manifests",

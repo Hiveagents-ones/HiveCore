@@ -7,7 +7,12 @@ from datetime import datetime
 from threading import Lock
 from typing import Dict, List
 
+from typing import TYPE_CHECKING
+
 from ._types import AgentExecution, TimelineEvent, UsageRecord
+
+if TYPE_CHECKING:
+    from ._webhook import WebhookExporter
 
 
 class ObservabilityHub:
@@ -55,7 +60,34 @@ class ObservabilityHub:
         self._agent_usage_index: Dict[str, List[int]] = defaultdict(list)
         self._project_execution_index: Dict[str, List[int]] = defaultdict(list)
 
+        # Webhook exporter (optional)
+        self._webhook: "WebhookExporter | None" = None
+
         self._initialized = True
+
+    def set_webhook(self, webhook: "WebhookExporter") -> None:
+        """Set webhook exporter for pushing data to backend.
+
+        Args:
+            webhook (`WebhookExporter`):
+                The webhook exporter instance.
+
+        Example::
+
+            from agentscope.observability import ObservabilityHub, WebhookExporter
+
+            hub = ObservabilityHub()
+            exporter = WebhookExporter(
+                api_url="http://localhost:8000/api/v1/observability",
+                api_key="hc_your_api_key"
+            )
+            hub.set_webhook(exporter)
+        """
+        self._webhook = webhook
+
+    def clear_webhook(self) -> None:
+        """Remove the webhook exporter."""
+        self._webhook = None
 
     def record_usage(self, usage: UsageRecord) -> None:
         """Record a token usage entry.
@@ -72,6 +104,10 @@ class ObservabilityHub:
                 self._project_usage_index[usage.project_id].append(idx)
             self._agent_usage_index[usage.agent_id].append(idx)
 
+        # Push to webhook if configured
+        if self._webhook:
+            self._webhook.push_usage(usage)
+
     def record_execution(self, execution: AgentExecution) -> None:
         """Record an agent execution entry.
 
@@ -86,6 +122,10 @@ class ObservabilityHub:
             if execution.project_id:
                 self._project_execution_index[execution.project_id].append(idx)
 
+        # Push to webhook if configured
+        if self._webhook:
+            self._webhook.push_execution(execution)
+
     def record_timeline_event(self, event: TimelineEvent) -> None:
         """Record a timeline event.
 
@@ -95,6 +135,10 @@ class ObservabilityHub:
         """
         with self._data_lock:
             self.timeline_events.append(event)
+
+        # Push to webhook if configured
+        if self._webhook:
+            self._webhook.push_timeline_event(event)
 
     def get_usage_by_project(
         self,
