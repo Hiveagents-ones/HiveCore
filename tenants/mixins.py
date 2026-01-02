@@ -1,0 +1,58 @@
+"""
+Tenant-aware mixins for models and viewsets.
+"""
+
+from django.db import models
+
+
+class TenantModelMixin(models.Model):
+    """Abstract mixin that adds tenant field to models.
+
+    All models that need tenant isolation should inherit from this mixin.
+
+    Usage::
+
+        class Project(TenantModelMixin):
+            name = models.CharField(max_length=200)
+            # ...
+    """
+
+    tenant = models.ForeignKey(
+        'tenants.Tenant',
+        on_delete=models.CASCADE,
+        related_name='%(class)ss',
+        verbose_name='Tenant'
+    )
+
+    class Meta:
+        abstract = True
+
+
+class TenantQuerySetMixin:
+    """Mixin for ViewSets to auto-filter by tenant.
+
+    Automatically filters queryset by the current request's tenant
+    and sets tenant on create.
+
+    Usage::
+
+        class ProjectViewSet(TenantQuerySetMixin, viewsets.ModelViewSet):
+            queryset = Project.objects.all()
+            serializer_class = ProjectSerializer
+    """
+
+    def get_queryset(self):
+        """Filter queryset by current tenant."""
+        qs = super().get_queryset()
+        tenant = getattr(self.request, 'tenant', None)
+        if tenant:
+            return qs.filter(tenant=tenant)
+        return qs.none()
+
+    def perform_create(self, serializer):
+        """Set tenant on create."""
+        tenant = getattr(self.request, 'tenant', None)
+        if tenant:
+            serializer.save(tenant=tenant)
+        else:
+            serializer.save()
