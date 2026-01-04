@@ -13,7 +13,18 @@ from rest_framework import status
 
 from observability.views import IsAuthenticatedOrAPIKey
 from observability.pubsub import subscribe_execution, _get_redis_client
+from authentication.backends import QueryParamJWTAuthentication, JWTAuthenticationWithTenant
 from .models import ExecutionRound, ExecutionProgress
+
+
+class EventStreamRenderer:
+    """Renderer for text/event-stream content type."""
+    media_type = 'text/event-stream'
+    format = 'txt'
+    charset = 'utf-8'
+
+    def render(self, data, media_type=None, renderer_context=None):
+        return data
 
 
 class ExecutionSSEView(APIView):
@@ -28,9 +39,16 @@ class ExecutionSSEView(APIView):
     - Status changes
 
     Falls back to polling if Redis is unavailable.
+
+    Supports authentication via:
+    - Authorization header (Bearer token)
+    - Query parameter (?token=xxx) for EventSource compatibility
     """
 
+    # Add QueryParamJWTAuthentication for SSE/EventSource support
+    authentication_classes = [QueryParamJWTAuthentication, JWTAuthenticationWithTenant]
     permission_classes = [IsAuthenticatedOrAPIKey]
+    renderer_classes = [EventStreamRenderer]
 
     def get(self, request, pk):
         """Start SSE stream for execution round."""
@@ -232,9 +250,16 @@ class ActiveExecutionsSSEView(APIView):
 
     Streams updates for all currently running executions.
     Useful for monitoring dashboards.
+
+    Supports authentication via:
+    - Authorization header (Bearer token)
+    - Query parameter (?token=xxx) for EventSource compatibility
     """
 
+    # Add QueryParamJWTAuthentication for SSE/EventSource support
+    authentication_classes = [QueryParamJWTAuthentication, JWTAuthenticationWithTenant]
     permission_classes = [IsAuthenticatedOrAPIKey]
+    renderer_classes = [EventStreamRenderer]
 
     def get(self, request):
         """Start SSE stream for all active executions."""

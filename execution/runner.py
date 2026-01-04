@@ -6,16 +6,21 @@ from Celery tasks to execute HiveCore projects.
 """
 import asyncio
 import logging
+import os
 from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+# Check if running in AWS ECS (Worker container)
+IS_AWS_ECS = os.getenv('AWS_EXECUTION_ENV') == 'AWS_ECS_FARGATE' or os.getenv('ECS_CONTAINER_METADATA_URI') is not None
 
 
 def run_execution_for_api(
     execution_round_id: str,
     project_id: str,
     requirement: str,
+    tenant_id: str | None = None,
     api_key: str | None = None,
     backend_url: str = 'http://localhost:8000',
     max_rounds: int = 3,
@@ -33,6 +38,7 @@ def run_execution_for_api(
         execution_round_id: UUID of the ExecutionRound for progress tracking
         project_id: UUID of the Project being executed
         requirement: The requirement text to execute
+        tenant_id: UUID of the Tenant for multi-tenant isolation
         api_key: Tenant API key for webhook authentication
         backend_url: Backend URL for webhook callbacks
         max_rounds: Maximum execution rounds
@@ -55,6 +61,7 @@ def run_execution_for_api(
         execution_round_id=execution_round_id,
         project_id=project_id,
         requirement=requirement,
+        tenant_id=tenant_id,
         api_key=api_key,
         backend_url=backend_url,
         max_rounds=max_rounds,
@@ -69,6 +76,7 @@ async def _run_execution_async(
     execution_round_id: str,
     project_id: str,
     requirement: str,
+    tenant_id: str | None = None,
     api_key: str | None = None,
     backend_url: str = 'http://localhost:8000',
     max_rounds: int = 3,
@@ -86,16 +94,40 @@ async def _run_execution_async(
     4. Returns structured results
     """
     from django.conf import settings
+    from asgiref.sync import sync_to_async
+    import os
+
+    # Disable Django's async safety check for this context
+    # This is safe because we're running in a Celery worker with thread pool
+    os.environ["DJANGO_ALLOW_ASYNC_UNSAFE"] = "true"
 
     # Update progress helper
     def update_progress(phase: str, agent: str = '', task: str = '', percent: int = 0):
-        """Update execution progress in database."""
+        """Update execution progress in database and push SSE event."""
         try:
-            from execution.models import ExecutionProgress
+            from execution.models import ExecutionProgress, ExecutionRound
+            from observability.pubsub import publish_execution_progress
+
             progress = ExecutionProgress.objects.get(execution_round_id=execution_round_id)
             progress.update_phase(phase, agent, task)
             if percent > 0:
                 progress.update_progress(percent)
+
+            # Push SSE event for real-time updates
+            execution_round = ExecutionRound.objects.select_related('tenant').get(id=execution_round_id)
+            if execution_round.tenant:
+                publish_execution_progress(
+                    execution_round_id=execution_round_id,
+                    tenant_id=str(execution_round.tenant.id),
+                    status=execution_round.status,
+                    phase=phase,
+                    current_agent=agent,
+                    current_task=task,
+                    progress_percent=percent,
+                    completed_tasks=progress.completed_tasks,
+                    total_tasks=progress.total_tasks,
+                    message=task,
+                )
         except Exception as e:
             logger.warning(f"Failed to update progress: {e}")
 
@@ -139,10 +171,13 @@ async def _run_execution_async(
 
     update_progress('collecting_spec', '', 'Parsing requirements', 10)
 
+    # Initialize runtime_workspace outside try block to ensure proper cleanup
+    runtime_workspace = None
+
     try:
         # Import execution modules
         from agentscope.scripts._llm_utils import initialize_llm
-        from agentscope.scripts._spec import collect_spec_from_text, enrich_acceptance_map
+        from agentscope.scripts._spec import collect_spec, enrich_acceptance_map
         from agentscope.scripts._runtime import build_runtime_harness
         from agentscope.scripts._execution import run_execution
 
@@ -153,7 +188,7 @@ async def _run_execution_async(
 
         # Parse requirement into spec
         update_progress('parsing_requirement', '', 'Analyzing requirement', 20)
-        spec = await collect_spec_from_text(llm, requirement)
+        spec = await collect_spec(llm, requirement, auto_confirm=True)
 
         # Enrich acceptance criteria
         update_progress('enriching_spec', '', 'Building acceptance criteria', 25)
@@ -169,6 +204,36 @@ async def _run_execution_async(
             workspace_dir=str(workspace_dir),
         )
 
+        # Initialize AWS Runtime Workspace for multi-tenant isolation (ECS only)
+        if IS_AWS_ECS:
+            try:
+                from agentscope.scripts._aws_runtime import AWSRuntimeWorkspace
+                update_progress('starting_sandbox', '', 'Starting isolated sandbox', 35)
+
+                # Use actual tenant_id for proper isolation, fallback to project_id prefix
+                effective_tenant_id = tenant_id or project_id[:8]
+                runtime_workspace = AWSRuntimeWorkspace(
+                    execution_id=execution_round_id,
+                    tenant_id=effective_tenant_id,
+                    project_id=project_id,
+                    cluster_name=os.getenv('ECS_CLUSTER_NAME', 'hivecore-cluster'),
+                    s3_bucket=os.getenv('HIVECORE_S3_BUCKET', 'hivecore-workspaces'),
+                    subnet_ids=os.getenv('ECS_SUBNET_IDS', '').split(',') if os.getenv('ECS_SUBNET_IDS') else None,
+                    security_group_ids=os.getenv('ECS_SECURITY_GROUP_IDS', '').split(',') if os.getenv('ECS_SECURITY_GROUP_IDS') else None,
+                    sandbox_task_definition=os.getenv('ECS_SANDBOX_TASK_DEF', 'hivecore-sandbox'),
+                )
+
+                # Start sandbox container
+                sandbox_started = await runtime_workspace.start()
+                if sandbox_started:
+                    logger.info(f"[Runner] AWS Sandbox started: task={runtime_workspace.task_arn}")
+                else:
+                    logger.warning("[Runner] Failed to start AWS Sandbox, falling back to local mode")
+                    runtime_workspace = None
+            except Exception as e:
+                logger.warning(f"[Runner] AWS Runtime not available: {e}, falling back to local mode")
+                runtime_workspace = None
+
         # Run execution
         update_progress('executing', '', 'Running agents', 40)
         result = await run_execution(
@@ -180,6 +245,8 @@ async def _run_execution_async(
             use_parallel_execution=use_parallel,
             use_pr_mode=use_pr_mode,
             use_edit_mode=use_edit_mode,
+            require_runtime=IS_AWS_ECS and runtime_workspace is not None,
+            runtime_workspace=runtime_workspace,
         )
 
         # Extract results
@@ -223,6 +290,14 @@ async def _run_execution_async(
         raise
 
     finally:
+        # Cleanup AWS Sandbox if started
+        if runtime_workspace is not None:
+            try:
+                await runtime_workspace.stop()
+                logger.info(f"[Runner] AWS Sandbox stopped")
+            except Exception as e:
+                logger.warning(f"[Runner] Failed to stop AWS Sandbox: {e}")
+
         # Cleanup webhook
         if agentscope_available:
             hub.clear_webhook()
