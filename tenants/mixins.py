@@ -56,3 +56,29 @@ class TenantQuerySetMixin:
             serializer.save(tenant=tenant)
         else:
             serializer.save()
+
+
+class ProjectTenantQuerySetMixin:
+    """Mixin for ViewSets to auto-filter by project's tenant.
+
+    For models that have a 'project' ForeignKey field, this mixin
+    filters the queryset by the project's tenant.
+
+    Usage::
+
+        class TaskViewSet(ProjectTenantQuerySetMixin, viewsets.ModelViewSet):
+            queryset = Task.objects.all()
+            serializer_class = TaskSerializer
+    """
+
+    # Override this if the FK to Project has a different name
+    project_field_name = 'project'
+
+    def get_queryset(self):
+        """Filter queryset by project's tenant."""
+        qs = super().get_queryset()
+        tenant = getattr(self.request, 'tenant', None)
+        if tenant:
+            filter_kwargs = {f'{self.project_field_name}__tenant': tenant}
+            return qs.filter(**filter_kwargs)
+        return qs.none()

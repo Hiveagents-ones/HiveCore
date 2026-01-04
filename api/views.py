@@ -10,6 +10,8 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from tenants.mixins import TenantQuerySetMixin, ProjectTenantQuerySetMixin
+
 from .models import (
     Agent,
     AgentCollaboration,
@@ -89,8 +91,11 @@ class AgentViewSet(viewsets.ModelViewSet):
     ),
     destroy=extend_schema(summary="Delete a project", tags=["Projects"]),
 )
-class ProjectViewSet(viewsets.ModelViewSet):
-    """ViewSet for Project CRUD operations."""
+class ProjectViewSet(TenantQuerySetMixin, viewsets.ModelViewSet):
+    """ViewSet for Project CRUD operations.
+
+    Tenant-isolated: Users can only access projects belonging to their tenant.
+    """
 
     queryset = Project.objects.all()
 
@@ -160,8 +165,11 @@ class ProjectViewSet(viewsets.ModelViewSet):
     ),
     destroy=extend_schema(summary="Delete a conversation", tags=["Conversations"]),
 )
-class ConversationViewSet(viewsets.ModelViewSet):
-    """ViewSet for Conversation CRUD operations."""
+class ConversationViewSet(ProjectTenantQuerySetMixin, viewsets.ModelViewSet):
+    """ViewSet for Conversation CRUD operations.
+
+    Tenant-isolated through project relationship.
+    """
 
     queryset = Conversation.objects.all()
     filterset_fields = ["project", "source_type"]
@@ -667,8 +675,11 @@ class DeliveryStandardViewSet(viewsets.ModelViewSet):
     ),
     destroy=extend_schema(summary="Remove a team member", tags=["Team Members"]),
 )
-class TeamMemberViewSet(viewsets.ModelViewSet):
-    """ViewSet for TeamMember CRUD operations."""
+class TeamMemberViewSet(ProjectTenantQuerySetMixin, viewsets.ModelViewSet):
+    """ViewSet for TeamMember CRUD operations.
+
+    Tenant-isolated through project relationship.
+    """
 
     queryset = TeamMember.objects.all()
     serializer_class = TeamMemberSerializer
@@ -683,8 +694,11 @@ class TeamMemberViewSet(viewsets.ModelViewSet):
     partial_update=extend_schema(summary="Partially update a task", tags=["Tasks"]),
     destroy=extend_schema(summary="Delete a task", tags=["Tasks"]),
 )
-class TaskViewSet(viewsets.ModelViewSet):
-    """ViewSet for Task CRUD operations."""
+class TaskViewSet(ProjectTenantQuerySetMixin, viewsets.ModelViewSet):
+    """ViewSet for Task CRUD operations.
+
+    Tenant-isolated through project relationship.
+    """
 
     queryset = Task.objects.all()
     serializer_class = TaskSerializer
@@ -704,8 +718,11 @@ class TaskViewSet(viewsets.ModelViewSet):
     ),
     destroy=extend_schema(summary="Delete agent thinking", tags=["Agent Detail"]),
 )
-class AgentThinkingViewSet(viewsets.ModelViewSet):
-    """ViewSet for AgentThinking CRUD operations."""
+class AgentThinkingViewSet(ProjectTenantQuerySetMixin, viewsets.ModelViewSet):
+    """ViewSet for AgentThinking CRUD operations.
+
+    Tenant-isolated through project relationship.
+    """
 
     queryset = AgentThinking.objects.all()
     serializer_class = AgentThinkingSerializer
@@ -722,8 +739,11 @@ class AgentThinkingViewSet(viewsets.ModelViewSet):
     ),
     destroy=extend_schema(summary="Delete agent task item", tags=["Agent Detail"]),
 )
-class AgentTaskItemViewSet(viewsets.ModelViewSet):
-    """ViewSet for AgentTaskItem CRUD operations."""
+class AgentTaskItemViewSet(ProjectTenantQuerySetMixin, viewsets.ModelViewSet):
+    """ViewSet for AgentTaskItem CRUD operations.
+
+    Tenant-isolated through project relationship.
+    """
 
     queryset = AgentTaskItem.objects.all()
     serializer_class = AgentTaskItemSerializer
@@ -742,8 +762,11 @@ class AgentTaskItemViewSet(viewsets.ModelViewSet):
     ),
     destroy=extend_schema(summary="Delete agent collaboration", tags=["Agent Detail"]),
 )
-class AgentCollaborationViewSet(viewsets.ModelViewSet):
-    """ViewSet for AgentCollaboration CRUD operations."""
+class AgentCollaborationViewSet(ProjectTenantQuerySetMixin, viewsets.ModelViewSet):
+    """ViewSet for AgentCollaboration CRUD operations.
+
+    Tenant-isolated through project relationship.
+    """
 
     queryset = AgentCollaboration.objects.all()
     serializer_class = AgentCollaborationSerializer
@@ -761,8 +784,11 @@ class AgentCollaborationViewSet(viewsets.ModelViewSet):
     partial_update=extend_schema(summary="Partially update a folder", tags=["Files"]),
     destroy=extend_schema(summary="Delete a folder", tags=["Files"]),
 )
-class FolderViewSet(viewsets.ModelViewSet):
-    """ViewSet for Folder CRUD operations."""
+class FolderViewSet(ProjectTenantQuerySetMixin, viewsets.ModelViewSet):
+    """ViewSet for Folder CRUD operations.
+
+    Tenant-isolated through project relationship.
+    """
 
     queryset = Folder.objects.all()
     filterset_fields = ["project", "parent"]
@@ -781,8 +807,11 @@ class FolderViewSet(viewsets.ModelViewSet):
     partial_update=extend_schema(summary="Partially update a file", tags=["Files"]),
     destroy=extend_schema(summary="Delete a file", tags=["Files"]),
 )
-class FileViewSet(viewsets.ModelViewSet):
-    """ViewSet for File CRUD operations."""
+class FileViewSet(ProjectTenantQuerySetMixin, viewsets.ModelViewSet):
+    """ViewSet for File CRUD operations.
+
+    Tenant-isolated through project relationship.
+    """
 
     queryset = File.objects.all()
     serializer_class = FileSerializer
@@ -984,6 +1013,8 @@ class ProjectDecisionViewSet(viewsets.ModelViewSet):
     Provides CRUD operations for project-level technology and
     architecture decisions.
 
+    Tenant-isolated through project relationship.
+
     Endpoints:
         GET /api/v1/decisions/                  - List all decisions
         GET /api/v1/decisions/{id}/             - Get decision details
@@ -1003,6 +1034,13 @@ class ProjectDecisionViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
+
+        # Tenant isolation
+        tenant = getattr(self.request, 'tenant', None)
+        if tenant:
+            qs = qs.filter(project__tenant=tenant)
+        else:
+            qs = qs.none()
 
         # Filter by project
         project_id = self.request.query_params.get('project')
@@ -1028,7 +1066,10 @@ class ProjectDecisionViewSet(viewsets.ModelViewSet):
 
 
 class ProjectFileRegistryViewSet(viewsets.ModelViewSet):
-    """ViewSet for project file registry."""
+    """ViewSet for project file registry.
+
+    Tenant-isolated through project relationship.
+    """
 
     queryset = ProjectFileRegistry.objects.all()
     serializer_class = ProjectFileRegistrySerializer
@@ -1036,6 +1077,13 @@ class ProjectFileRegistryViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
+
+        # Tenant isolation
+        tenant = getattr(self.request, 'tenant', None)
+        if tenant:
+            qs = qs.filter(project__tenant=tenant)
+        else:
+            qs = qs.none()
 
         # Filter by project
         project_id = self.request.query_params.get('project')
