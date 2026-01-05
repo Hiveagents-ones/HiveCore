@@ -3300,13 +3300,27 @@ async def run_single_requirement(
             )
             llm_calls += 1
 
-        # Extract modified files
+        # Extract modified files and build workspace_files for QA
         modified_files = []
+        workspace_files: dict[str, str] = {}
+
         if runtime_workspace:
             # Get from runtime workspace
             modified_files = list(code_result.get("files_created", []))
         elif "files" in code_result:
-            modified_files = list(code_result.get("files", {}).keys())
+            # stepwise_generate_files returns files as list of {"path": p, "content": c}
+            files_list = code_result.get("files", [])
+            if isinstance(files_list, list):
+                for f in files_list:
+                    path = f.get("path", "")
+                    content = f.get("content", "")
+                    if path and content:
+                        modified_files.append(path)
+                        workspace_files[path] = content
+            elif isinstance(files_list, dict):
+                # Fallback for dict format {path: content}
+                workspace_files = files_list
+                modified_files = list(files_list.keys())
 
         # 4. QA Validation
         qa_report_raw = await qa_requirement(
@@ -3316,11 +3330,11 @@ async def run_single_requirement(
             artifact_path=None,
             criteria=criteria,
             round_index=round_idx,
-            workspace_files=None,
+            workspace_files=workspace_files if workspace_files else None,
             playwright_mcp=None,
             http_url=None,
             verbose=verbose,
-            mandatory_files=[],
+            mandatory_files=modified_files,
             runtime_workspace=runtime_workspace,
             enable_runtime_validation=runtime_workspace is not None,
         )
