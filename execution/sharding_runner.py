@@ -188,27 +188,36 @@ def execute_single_requirement_sync(
             workspace_dir = None
 
             if use_runtime:
-                # Use Docker container for isolated execution
+                # Use AWS ECS Fargate for isolated execution
                 try:
-                    from agentscope.scripts._runtime_workspace import RuntimeWorkspaceWithPR
+                    from agentscope.scripts._aws_runtime import AWSRuntimeWorkspace
 
-                    # Each requirement gets its own container
-                    runtime_workspace = RuntimeWorkspaceWithPR(
-                        base_workspace_dir="/workspace",
-                        image=getattr(settings, 'RUNTIME_DOCKER_IMAGE', 'agentscope/runtime-sandbox-filesystem:latest'),
+                    # Get tenant and project info
+                    tenant_id = str(execution_round.tenant_id) if execution_round.tenant_id else 'default'
+                    project_id = str(execution_round.project_id) if execution_round.project_id else None
+                    execution_id = f"{str(execution_round.id)[:8]}-{req_id}"
+
+                    # Each requirement gets its own ECS task
+                    runtime_workspace = AWSRuntimeWorkspace(
+                        execution_id=execution_id,
+                        tenant_id=tenant_id,
+                        project_id=project_id,
+                        cluster_name=getattr(settings, 'AWS_ECS_CLUSTER', 'hivecore-cluster'),
+                        task_definition=getattr(settings, 'AWS_ECS_TASK_DEFINITION', 'hivecore-sandbox'),
+                        s3_bucket=getattr(settings, 'AWS_S3_WORKSPACE_BUCKET', None),
+                        region=getattr(settings, 'AWS_REGION', 'ap-northeast-1'),
                         timeout=600,
-                        enable_pr_mode=True,
                     )
 
-                    # Start the container
-                    if not runtime_workspace.start():
-                        logger.warning(f"[{req_id}] Failed to start runtime workspace, falling back to local mode")
+                    # Start the ECS task
+                    if not await runtime_workspace.start():
+                        logger.warning(f"[{req_id}] Failed to start AWS runtime, falling back to local mode")
                         runtime_workspace = None
                     else:
-                        logger.info(f"[{req_id}] Runtime workspace started: {runtime_workspace.sandbox_id}")
+                        logger.info(f"[{req_id}] AWS runtime started: task={runtime_workspace.task_arn}")
 
                 except Exception as e:
-                    logger.warning(f"[{req_id}] Runtime workspace init failed: {e}, falling back to local mode")
+                    logger.warning(f"[{req_id}] AWS runtime init failed: {e}, falling back to local mode")
                     runtime_workspace = None
 
             if not runtime_workspace:
@@ -313,7 +322,7 @@ def execute_single_requirement_sync(
             # Clean up runtime workspace
             if runtime_workspace:
                 try:
-                    runtime_workspace.stop()
+                    await runtime_workspace.stop()
                     logger.info(f"[{req_id}] Runtime workspace stopped")
                 except Exception as e:
                     logger.warning(f"[{req_id}] Failed to stop runtime workspace: {e}")
