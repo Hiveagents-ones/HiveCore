@@ -353,30 +353,164 @@ def _mock_execute_requirement(requirement_execution) -> Dict[str, Any]:
 # ============ Workspace Merge Functions ============
 
 
+def _collect_all_files(
+    requirements_dir: Path,
+    requirement_ids: list[str],
+) -> Dict[str, Dict[str, Any]]:
+    """
+    Collect all files from requirement workspaces and detect conflicts.
+
+    Returns:
+        Dict mapping relative file paths to:
+        {
+            "sources": [{"req_id": "REQ-001", "path": Path, "content": str}, ...],
+            "has_conflict": bool
+        }
+    """
+    file_map: Dict[str, Dict[str, Any]] = {}
+
+    for req_id in requirement_ids:
+        req_workspace = requirements_dir / req_id
+        if not req_workspace.exists():
+            continue
+
+        for src_path in req_workspace.rglob('*'):
+            if src_path.is_file():
+                rel_path = str(src_path.relative_to(req_workspace))
+
+                if rel_path not in file_map:
+                    file_map[rel_path] = {"sources": [], "has_conflict": False}
+
+                try:
+                    content = src_path.read_text(encoding='utf-8')
+                except Exception:
+                    content = src_path.read_bytes().decode('utf-8', errors='replace')
+
+                file_map[rel_path]["sources"].append({
+                    "req_id": req_id,
+                    "path": src_path,
+                    "content": content,
+                })
+
+                # Mark as conflict if multiple sources
+                if len(file_map[rel_path]["sources"]) > 1:
+                    file_map[rel_path]["has_conflict"] = True
+
+    return file_map
+
+
+def _merge_file_with_agent(
+    file_path: str,
+    sources: list[Dict[str, Any]],
+    spec: Dict[str, Any],
+) -> str:
+    """
+    Use LLM to intelligently merge conflicting file versions.
+
+    Args:
+        file_path: Relative file path
+        sources: List of source versions, each with req_id and content
+        spec: Parsed spec for context
+
+    Returns:
+        Merged file content
+    """
+    # Build context about each version
+    versions_context = []
+    for i, src in enumerate(sources):
+        req_id = src["req_id"]
+        content = src["content"]
+
+        # Find requirement info from spec
+        req_info = None
+        for req in spec.get("requirements", []):
+            if req.get("id") == req_id:
+                req_info = req
+                break
+
+        req_desc = req_info.get("content", "") if req_info else f"Requirement {req_id}"
+
+        versions_context.append(f"""
+=== Version {i+1} (from {req_id}) ===
+Requirement: {req_desc}
+
+```
+{content}
+```
+""")
+
+    prompt = f"""You are a code merge expert. Multiple requirements have generated different versions of the same file.
+Your task is to intelligently merge these versions into a single coherent file.
+
+File: {file_path}
+
+{chr(10).join(versions_context)}
+
+Instructions:
+1. Analyze each version to understand what each requirement needs
+2. Merge the versions so that ALL requirements are satisfied
+3. Resolve any conflicts intelligently (don't just pick one version)
+4. Ensure the merged code is syntactically correct and functional
+5. Keep all necessary imports, functions, and features from each version
+
+Output ONLY the merged file content, no explanations or markdown code blocks.
+"""
+
+    try:
+        from agentscope.scripts._llm_utils import initialize_llm
+
+        async def _call_llm():
+            llm, _ = initialize_llm('auto')
+            response = await llm.async_call(prompt)
+            return response.text if hasattr(response, 'text') else str(response)
+
+        merged_content = _run_async_in_thread(_call_llm())
+
+        # Clean up response (remove potential markdown code blocks)
+        if merged_content.startswith("```"):
+            lines = merged_content.split("\n")
+            # Remove first line (```language) and last line (```)
+            if lines[-1].strip() == "```":
+                lines = lines[1:-1]
+            elif lines[0].startswith("```"):
+                lines = lines[1:]
+            merged_content = "\n".join(lines)
+
+        logger.info(f"[Merge] Agent merged {file_path} from {len(sources)} versions")
+        return merged_content
+
+    except Exception as e:
+        logger.error(f"[Merge] Agent merge failed for {file_path}: {e}")
+        # Fallback: use the last version (dependency order means last is most complete)
+        return sources[-1]["content"]
+
+
 def merge_requirement_workspaces(
     project_id: str,
     passed_requirement_ids: list[str],
+    spec: Dict[str, Any] | None = None,
 ) -> Dict[str, Any]:
     """
     Merge files from passed requirements into the working directory.
 
-    This function is called after aggregation to consolidate code from
-    individual requirement workspaces into the final working directory.
-
-    Files are merged in dependency order (already sorted by topological sort).
-    Later requirements can override earlier ones (expected behavior for
-    dependent requirements that build on previous work).
+    This function:
+    1. Collects all files from requirement workspaces
+    2. Detects conflicts (same file from multiple requirements)
+    3. For conflicts: uses Agent (LLM) to intelligently merge
+    4. For non-conflicts: copies directly
 
     Args:
         project_id: Project identifier
         passed_requirement_ids: List of requirement IDs that passed QA,
                                in dependency order
+        spec: Parsed requirement spec (for Agent merge context)
 
     Returns:
         Dict with merge results:
         {
             "merged_files": ["path1", "path2", ...],
-            "conflicts": [],  # Future: track file conflicts
+            "conflicts_resolved": ["path1", ...],
+            "file_sources": {"path": "REQ-001", ...},
             "working_dir": "/path/to/working"
         }
     """
@@ -390,50 +524,54 @@ def merge_requirement_workspaces(
     # Ensure working directory exists
     working_dir.mkdir(parents=True, exist_ok=True)
 
+    # Collect all files and detect conflicts
+    file_map = _collect_all_files(requirements_dir, passed_requirement_ids)
+
     merged_files = []
-    file_sources = {}  # Track which requirement each file came from
+    conflicts_resolved = []
+    file_sources = {}
 
     logger.info(f"[Merge] Merging {len(passed_requirement_ids)} requirement workspaces to {working_dir}")
+    logger.info(f"[Merge] Found {len(file_map)} unique files, {sum(1 for f in file_map.values() if f['has_conflict'])} with conflicts")
 
-    for req_id in passed_requirement_ids:
-        req_workspace = requirements_dir / req_id
+    for rel_path, file_info in file_map.items():
+        dst_path = working_dir / rel_path
+        dst_path.parent.mkdir(parents=True, exist_ok=True)
 
-        if not req_workspace.exists():
-            logger.warning(f"[Merge] Workspace not found for {req_id}: {req_workspace}")
-            continue
+        sources = file_info["sources"]
 
-        # Walk through all files in requirement workspace
-        for src_path in req_workspace.rglob('*'):
-            if src_path.is_file():
-                # Get relative path within requirement workspace
-                rel_path = src_path.relative_to(req_workspace)
-                dst_path = working_dir / rel_path
+        try:
+            if file_info["has_conflict"]:
+                # Multiple sources - need Agent merge
+                logger.info(f"[Merge] Conflict detected for {rel_path}: {[s['req_id'] for s in sources]}")
 
-                # Create parent directories
-                dst_path.parent.mkdir(parents=True, exist_ok=True)
+                if spec:
+                    # Use Agent to merge
+                    merged_content = _merge_file_with_agent(rel_path, sources, spec)
+                    dst_path.write_text(merged_content, encoding='utf-8')
+                    conflicts_resolved.append(rel_path)
+                    file_sources[rel_path] = f"merged({','.join(s['req_id'] for s in sources)})"
+                else:
+                    # No spec available, fallback to last version
+                    logger.warning(f"[Merge] No spec for Agent merge, using last version for {rel_path}")
+                    shutil.copy2(sources[-1]["path"], dst_path)
+                    file_sources[rel_path] = sources[-1]["req_id"]
+            else:
+                # Single source - direct copy
+                shutil.copy2(sources[0]["path"], dst_path)
+                file_sources[rel_path] = sources[0]["req_id"]
 
-                # Copy file (overwrite if exists - later requirements take precedence)
-                try:
-                    shutil.copy2(src_path, dst_path)
-                    rel_str = str(rel_path)
+            merged_files.append(rel_path)
 
-                    if rel_str in file_sources:
-                        logger.debug(f"[Merge] File {rel_str} overwritten: {file_sources[rel_str]} -> {req_id}")
+        except Exception as e:
+            logger.error(f"[Merge] Failed to process {rel_path}: {e}")
 
-                    file_sources[rel_str] = req_id
-
-                    if rel_str not in merged_files:
-                        merged_files.append(rel_str)
-
-                except Exception as e:
-                    logger.error(f"[Merge] Failed to copy {src_path} -> {dst_path}: {e}")
-
-    logger.info(f"[Merge] Merged {len(merged_files)} files from {len(passed_requirement_ids)} requirements")
+    logger.info(f"[Merge] Merged {len(merged_files)} files, resolved {len(conflicts_resolved)} conflicts")
 
     return {
         "merged_files": merged_files,
+        "conflicts_resolved": conflicts_resolved,
         "file_sources": file_sources,
-        "conflicts": [],  # Future enhancement: detect and track conflicts
         "working_dir": str(working_dir),
     }
 

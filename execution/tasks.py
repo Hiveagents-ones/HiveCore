@@ -867,8 +867,11 @@ def complete_execution_task(self, execution_round_id: str):
             from .sharding_runner import merge_requirement_workspaces, cleanup_requirement_workspaces
 
             project_id = str(execution_round.project_id) if execution_round.project_id else 'default'
-            merge_result = merge_requirement_workspaces(project_id, passed_req_ids)
+            # Pass spec so Agent can intelligently merge conflicting files
+            merge_result = merge_requirement_workspaces(project_id, passed_req_ids, spec=spec)
             logger.info(f"[Complete] Merged {len(merge_result.get('merged_files', []))} files to {merge_result.get('working_dir')}")
+            if merge_result.get('conflicts_resolved'):
+                logger.info(f"[Complete] Agent resolved {len(merge_result['conflicts_resolved'])} file conflicts")
 
             # Optionally clean up individual requirement workspaces
             # cleanup_requirement_workspaces(project_id)  # Uncomment to enable cleanup
