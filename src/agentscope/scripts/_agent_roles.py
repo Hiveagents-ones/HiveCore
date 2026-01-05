@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from ._sandbox import RuntimeWorkspace
 
 # Claude Code integration configuration
-USE_CLAUDE_CODE = True  # Set to False to use traditional LLM generation
+USE_CLAUDE_CODE = False  # Set to False to use traditional LLM generation (Claude CLI not available in Worker)
 
 # Claude Code execution mode:
 # - "stepwise": Agent decides file list, Claude Code generates each file (legacy)

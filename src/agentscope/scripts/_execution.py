@@ -3158,7 +3158,228 @@ async def run_execution(
     }
 
 
+# ---------------------------------------------------------------------------
+# Single Requirement Execution (for Task Sharding)
+# ---------------------------------------------------------------------------
+async def run_single_requirement(
+    llm: Any,
+    spec: dict[str, Any],
+    requirement: dict[str, Any],
+    workspace_dir: Path | None = None,
+    runtime_workspace: Any = None,
+    round_idx: int = 1,
+    feedback: str = "",
+    passed_ids: set[str] | None = None,
+    prev_blueprint: dict[str, Any] | None = None,
+    *,
+    verbose: bool = False,
+) -> dict[str, Any]:
+    """Execute a single requirement through Blueprint -> Code -> QA flow.
+
+    This function is designed for task sharding, where each requirement is
+    executed independently by a Celery task. It provides a simplified interface
+    that doesn't require the full execution context.
+
+    Args:
+        llm: LLM model instance
+        spec: Full specification dict (for acceptance criteria lookup)
+        requirement: Single requirement dict with id, content, type, etc.
+        workspace_dir: Workspace directory path
+        runtime_workspace: RuntimeWorkspace instance (optional)
+        round_idx: Current round number (for retries)
+        feedback: Previous QA feedback (for retries)
+        passed_ids: Set of already-passed criteria IDs (for retries)
+        prev_blueprint: Previous blueprint dict (for retries)
+        verbose: Whether to print debug info
+
+    Returns:
+        dict: Execution result containing:
+            - rid: Requirement ID
+            - passed: Whether requirement passed QA
+            - pass_ratio: Ratio of passed criteria
+            - blueprint: Blueprint dict
+            - code_result: Code generation result
+            - qa_result: QA validation result
+            - modified_files: List of files modified
+            - tokens: Estimated tokens used
+            - cost: Estimated cost in USD
+            - llm_calls: Number of LLM calls made
+            - error: Error message if failed
+    """
+    from ._spec import criteria_for_requirement
+    from ._agent_roles import (
+        design_requirement,
+        stepwise_generate_files,
+        implement_requirement,
+    )
+    from ._qa import qa_requirement, _normalize_qa_report
+
+    rid = requirement.get("id", "UNKNOWN")
+    passed_ids = passed_ids or set()
+
+    # Track metrics
+    llm_calls = 0
+    tokens_used = 0
+    cost_usd = 0.0
+
+    try:
+        # 1. Get acceptance criteria for this requirement
+        criteria = criteria_for_requirement(spec, rid)
+        if not criteria:
+            # Fallback to requirement's own acceptance field
+            acceptance = requirement.get("acceptance", [])
+            criteria = [
+                {"id": f"{rid}.{i+1}", "title": acc, "description": acc}
+                for i, acc in enumerate(acceptance)
+            ]
+
+        # Ensure criteria have IDs
+        for idx, item in enumerate(criteria, 1):
+            item.setdefault("id", f"{rid}.{idx}")
+
+        # Calculate failed criteria (not yet passed)
+        failed_criteria = [c for c in criteria if c.get("id") not in passed_ids]
+
+        # 2. Design Blueprint
+        blueprint = await design_requirement(
+            llm,
+            requirement,
+            feedback,
+            passed_ids,
+            failed_criteria,
+            prev_blueprint,
+            contextual_notes=None,
+            existing_workspace_files=None,
+            skeleton_context=None,
+            verbose=verbose,
+        )
+        llm_calls += 1
+
+        # Inject spec-level tech_stack and project_type
+        if "tech_stack" not in blueprint and spec.get("tech_stack"):
+            blueprint["tech_stack"] = spec.get("tech_stack")
+        if "project_type" not in blueprint and spec.get("project_type"):
+            blueprint["project_type"] = spec.get("project_type")
+
+        # 3. Generate Code
+        files_plan = blueprint.get("files_plan", [])
+        code_result: dict[str, Any] = {}
+
+        if files_plan:
+            # Use stepwise generation for structured file plans
+            code_result = await stepwise_generate_files(
+                llm=llm,
+                requirement=requirement,
+                blueprint=blueprint,
+                contextual_notes=None,
+                runtime_workspace=runtime_workspace,
+                feedback=feedback,
+                failed_criteria=failed_criteria,
+                previous_errors=[],
+                skeleton_context=None,
+                all_criteria=criteria,
+                workspace_dir=workspace_dir,
+                code_guard=None,
+                verbose=verbose,
+            )
+            llm_calls += len(files_plan)  # Approximate
+        else:
+            # Fallback to single-shot implementation
+            code_result = await implement_requirement(
+                llm,
+                requirement,
+                blueprint,
+                feedback,
+                passed_ids,
+                failed_criteria,
+                "",  # prev_artifact
+                contextual_notes=None,
+                workspace_files=None,
+                skeleton_context=None,
+                verbose=verbose,
+            )
+            llm_calls += 1
+
+        # Extract modified files
+        modified_files = []
+        if runtime_workspace:
+            # Get from runtime workspace
+            modified_files = list(code_result.get("files_created", []))
+        elif "files" in code_result:
+            modified_files = list(code_result.get("files", {}).keys())
+
+        # 4. QA Validation
+        qa_report_raw = await qa_requirement(
+            llm=llm,
+            requirement=requirement,
+            blueprint=blueprint,
+            artifact_path=None,
+            criteria=criteria,
+            round_index=round_idx,
+            workspace_files=None,
+            playwright_mcp=None,
+            http_url=None,
+            verbose=verbose,
+            mandatory_files=[],
+            runtime_workspace=runtime_workspace,
+            enable_runtime_validation=runtime_workspace is not None,
+        )
+        llm_calls += 1
+        qa_report = _normalize_qa_report(qa_report_raw, criteria)
+
+        # Calculate pass ratio
+        crit = qa_report.get("criteria", [])
+        passed_count = sum(1 for item in crit if item.get("pass"))
+        total = max(len(crit), 1)
+        pass_ratio = passed_count / total
+        overall_passed = qa_report.get("overall_pass", passed_count == total)
+
+        # Estimate token usage (rough approximation)
+        tokens_used = llm_calls * 2000  # ~2k tokens per call average
+        cost_usd = tokens_used * 0.00001  # Rough cost estimate
+
+        return {
+            "rid": rid,
+            "passed": overall_passed,
+            "pass_ratio": pass_ratio,
+            "blueprint": blueprint,
+            "code_result": code_result,
+            "qa_result": {
+                "passed": passed_count,
+                "total": total,
+                "details": crit,
+                "overall_pass": overall_passed,
+            },
+            "validation_result": None,
+            "modified_files": modified_files,
+            "tokens": tokens_used,
+            "cost": cost_usd,
+            "llm_calls": llm_calls,
+            "error": None,
+        }
+
+    except Exception as e:
+        import traceback
+        error_msg = f"[{rid}] Execution failed: {e}\n{traceback.format_exc()}"
+        return {
+            "rid": rid,
+            "passed": False,
+            "pass_ratio": 0.0,
+            "blueprint": prev_blueprint,
+            "code_result": {},
+            "qa_result": {"passed": 0, "total": 0, "details": []},
+            "validation_result": None,
+            "modified_files": [],
+            "tokens": tokens_used,
+            "cost": cost_usd,
+            "llm_calls": llm_calls,
+            "error": error_msg,
+        }
+
+
 __all__ = [
     "DELIVERABLE_DIR",
     "run_execution",
+    "run_single_requirement",
+    "RequirementResult",
 ]

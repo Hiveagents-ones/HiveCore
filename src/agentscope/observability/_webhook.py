@@ -49,6 +49,9 @@ class WebhookExporter:
         async_mode (`bool`):
             If True, push requests in background thread.
             Defaults to True for non-blocking operation.
+        extra_headers (`dict | None`):
+            Additional headers to include in requests.
+            Useful for passing execution context like X-Execution-Round.
     """
 
     def __init__(
@@ -57,12 +60,14 @@ class WebhookExporter:
         api_key: Optional[str] = None,
         timeout: float = 5.0,
         async_mode: bool = True,
+        extra_headers: Optional[dict] = None,
     ) -> None:
         """Initialize the webhook exporter."""
         self.api_url = api_url.rstrip("/")
         self.api_key = api_key
         self.timeout = timeout
         self.async_mode = async_mode
+        self.extra_headers = extra_headers or {}
 
         self._session: Optional["requests.Session"] = None
         self._executor: Optional["ThreadPoolExecutor"] = None
@@ -77,6 +82,9 @@ class WebhookExporter:
             if self.api_key:
                 self._session.headers["X-API-Key"] = self.api_key
             self._session.headers["Content-Type"] = "application/json"
+            # Add extra headers if provided
+            for key, value in self.extra_headers.items():
+                self._session.headers[key] = value
         return self._session
 
     @property

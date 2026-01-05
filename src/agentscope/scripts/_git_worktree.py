@@ -1027,9 +1027,11 @@ build/
             )
 
             if result["success"]:
-                # Fix .git ownership after merge
+                # Fix ownership of ALL files after merge (not just .git)
+                # This is critical because git merge runs as root, but
+                # Claude Code runs as node user and needs write access
                 await self.exec(
-                    f"chown -R node:node {self.delivery_dir}/.git"
+                    f"chown -R node:node {self.delivery_dir}"
                 )
                 logger.info(
                     f"[RuntimeWorkspace] Merged {agent_id} "
@@ -1115,8 +1117,9 @@ build/
         )
 
         if result["success"]:
+            # Fix ownership of ALL files (not just .git)
             await self.exec(
-                f"chown -R node:node {self.delivery_dir}/.git"
+                f"chown -R node:node {self.delivery_dir}"
             )
             logger.info(
                 f"[RuntimeWorkspace] Cherry-picked {agent_id} "

@@ -373,38 +373,23 @@ async def _claude_code_edit_in_container(
         )
 
         try:
-            # Stream output line by line (no timeout by default)
-            while True:
-                # [DISABLED] 总超时机制已禁用 - 打断正在执行的任务会导致不完整输出
-                # 只保留静默超时（activity_timeout）用于检测真正卡住的情况
-                # if timeout is not None:
-                #     elapsed = time.time() - start_time
-                #     if elapsed > timeout:
-                #         process.kill()
-                #         await process.wait()
-                #         logger.info(
-                #             "[ClaudeCode] 总超时 (%ds)，但有持续输出",
-                #             timeout,
-                #         )
-                #         return ToolResponse(
-                #             content=[TextBlock(
-                #                 type="text",
-                #                 text=f"[TIMEOUT:PROGRESS] Claude Code 总超时 ({timeout}s)，"
-                #                      f"但任务有持续输出（共 {len(output_lines)} 条消息）。"
-                #                      f"任务可能较复杂，建议继续执行。",
-                #             )]
-                #         )
+            # Stream output using chunked read instead of readline()
+            # This avoids the 64KB line limit that causes LimitOverrunError
+            # when Claude Code outputs large tool results (e.g., reading files)
+            read_buffer = b""
+            chunk_size = 65536  # 64KB chunks
 
-                # Read next line (with optional activity timeout)
+            while True:
+                # Read next chunk (with optional activity timeout)
                 try:
                     if activity_timeout is not None:
-                        line_bytes = await asyncio.wait_for(
-                            process.stdout.readline(),
+                        chunk = await asyncio.wait_for(
+                            process.stdout.read(chunk_size),
                             timeout=activity_timeout,
                         )
                     else:
                         # No timeout - wait indefinitely
-                        line_bytes = await process.stdout.readline()
+                        chunk = await process.stdout.read(chunk_size)
                 except asyncio.TimeoutError:
                     # No output for activity_timeout seconds - likely stalled
                     process.kill()
@@ -421,39 +406,55 @@ async def _claude_code_edit_in_container(
                         )]
                     )
 
-                if not line_bytes:
+                if not chunk:
                     # EOF - process finished
+                    # Process any remaining data in buffer
+                    if read_buffer:
+                        line = read_buffer.decode("utf-8", errors="replace").strip()
+                        if line:
+                            output_lines.append(line)
+                            try:
+                                msg = json.loads(line)
+                                if msg.get("type") == "result":
+                                    final_result = msg
+                            except json.JSONDecodeError:
+                                pass
                     break
 
                 last_activity_time = time.time()
-                line = line_bytes.decode("utf-8", errors="replace").strip()
-                if not line:
-                    continue
+                read_buffer += chunk
 
-                output_lines.append(line)
+                # Process all complete lines in buffer
+                while b"\n" in read_buffer:
+                    line_bytes, read_buffer = read_buffer.split(b"\n", 1)
+                    line = line_bytes.decode("utf-8", errors="replace").strip()
+                    if not line:
+                        continue
 
-                # Parse NDJSON message
-                try:
-                    msg = json.loads(line)
-                    msg_type = msg.get("type", "")
+                    output_lines.append(line)
 
-                    # Call progress callback if provided
-                    if on_progress:
-                        try:
-                            if asyncio.iscoroutinefunction(on_progress):
-                                await on_progress(msg)
-                            else:
-                                on_progress(msg)
-                        except Exception as e:
-                            logger.warning("[ClaudeCode] on_progress 回调错误: %s", e)
+                    # Parse NDJSON message
+                    try:
+                        msg = json.loads(line)
+                        msg_type = msg.get("type", "")
 
-                    # Capture final result
-                    if msg_type == "result":
-                        final_result = msg
+                        # Call progress callback if provided
+                        if on_progress:
+                            try:
+                                if asyncio.iscoroutinefunction(on_progress):
+                                    await on_progress(msg)
+                                else:
+                                    on_progress(msg)
+                            except Exception as e:
+                                logger.warning("[ClaudeCode] on_progress 回调错误: %s", e)
 
-                except json.JSONDecodeError:
-                    # Not JSON, skip
-                    pass
+                        # Capture final result
+                        if msg_type == "result":
+                            final_result = msg
+
+                    except json.JSONDecodeError:
+                        # Not JSON, skip (e.g., very long tool result lines)
+                        pass
 
             # Wait for process to finish
             await process.wait()
