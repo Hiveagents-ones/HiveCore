@@ -501,16 +501,14 @@ class AWSRuntimeWorkspace:
         Returns:
             `list[str]`: List of subnet IDs.
         """
-        # These should be configured via environment or parameter store
+        # Read from environment or use hardcoded defaults for HiveCore VPC
         subnets = os.getenv("ECS_SUBNETS", "").split(",")
         if not subnets or subnets == [""]:
-            # Fallback: describe subnets in default VPC
-            import boto3
-            ec2 = boto3.client("ec2", region_name=self.region)
-            response = ec2.describe_subnets(
-                Filters=[{"Name": "default-for-az", "Values": ["true"]}]
-            )
-            subnets = [s["SubnetId"] for s in response.get("Subnets", [])][:2]
+            # Default: HiveCore VPC subnets in ap-northeast-1
+            subnets = [
+                "subnet-02500862d92432bb2",  # ap-northeast-1a
+                "subnet-0078bf20f1aa30f5d",  # ap-northeast-1c
+            ]
         return subnets
 
     def _get_security_groups(self) -> list[str]:
@@ -521,8 +519,8 @@ class AWSRuntimeWorkspace:
         """
         sgs = os.getenv("ECS_SECURITY_GROUPS", "").split(",")
         if not sgs or sgs == [""]:
-            # Use default security group
-            sgs = []
+            # Default: HiveCore ECS security group
+            sgs = ["sg-0bff52c5274aa9893"]  # hivecore-ecs-sg
         return sgs
 
     def _cleanup_s3_files(self) -> None:
