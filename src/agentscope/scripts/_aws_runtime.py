@@ -201,7 +201,8 @@ class AWSRuntimeWorkspace:
                     "awsvpcConfiguration": {
                         "subnets": self._get_subnets(),
                         "securityGroups": self._get_security_groups(),
-                        "assignPublicIp": "DISABLED",
+                        # ENABLED needed for ECR access without NAT Gateway
+                        "assignPublicIp": "ENABLED",
                     }
                 },
                 overrides={
