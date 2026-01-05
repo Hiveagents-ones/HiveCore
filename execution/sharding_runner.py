@@ -7,7 +7,9 @@ own event loops.
 
 Key functions:
 - parse_requirements_sync: Parse requirements using LLM
+- start_project_runtime_sync: Start project-level ECS container
 - execute_single_requirement_sync: Execute a single requirement (Blueprint -> Code -> QA)
+- stop_project_runtime_sync: Stop project-level ECS container
 """
 import asyncio
 import logging
@@ -140,9 +142,121 @@ def parse_requirements_sync(
     return _run_async_in_thread(_parse())
 
 
+def start_project_runtime_sync(
+    execution_round,
+) -> Optional[str]:
+    """
+    Start a project-level ECS container for all requirements.
+
+    This container is shared across all requirements in the execution round,
+    avoiding the overhead of starting a new container for each requirement.
+
+    Args:
+        execution_round: ExecutionRound model instance
+
+    Returns:
+        ECS task ARN if started successfully, None otherwise
+    """
+    logger.info(f"[start_project_runtime] Starting runtime for {execution_round.id}")
+
+    async def _start():
+        os.environ["DJANGO_ALLOW_ASYNC_UNSAFE"] = "true"
+
+        use_runtime = getattr(settings, 'USE_RUNTIME_WORKSPACE', True)
+        if not use_runtime:
+            logger.info("[start_project_runtime] Runtime disabled, using local mode")
+            return None
+
+        try:
+            from agentscope.scripts._aws_runtime import AWSRuntimeWorkspace
+
+            tenant_id = str(execution_round.tenant_id) if execution_round.tenant_id else 'default'
+            project_id = str(execution_round.project_id) if execution_round.project_id else None
+            execution_id = str(execution_round.id)[:8]
+
+            runtime = AWSRuntimeWorkspace(
+                execution_id=execution_id,
+                tenant_id=tenant_id,
+                project_id=project_id,
+                cluster_name=getattr(settings, 'AWS_ECS_CLUSTER', 'hivecore-cluster'),
+                task_definition=getattr(settings, 'AWS_ECS_TASK_DEFINITION', 'hivecore-sandbox'),
+                s3_bucket=getattr(settings, 'AWS_S3_WORKSPACE_BUCKET', None),
+                region=getattr(settings, 'AWS_REGION', 'ap-northeast-1'),
+                timeout=600,
+            )
+
+            if await runtime.start():
+                logger.info(f"[start_project_runtime] Started: {runtime.task_arn}")
+                return runtime.task_arn
+            else:
+                logger.warning("[start_project_runtime] Failed to start runtime")
+                return None
+
+        except Exception as e:
+            logger.warning(f"[start_project_runtime] Error: {e}")
+            return None
+
+    return _run_async_in_thread(_start())
+
+
+def stop_project_runtime_sync(
+    execution_round,
+    task_arn: str,
+) -> bool:
+    """
+    Stop the project-level ECS container.
+
+    Args:
+        execution_round: ExecutionRound model instance
+        task_arn: ECS task ARN to stop
+
+    Returns:
+        True if stopped successfully
+    """
+    if not task_arn:
+        return True
+
+    logger.info(f"[stop_project_runtime] Stopping runtime: {task_arn}")
+
+    async def _stop():
+        os.environ["DJANGO_ALLOW_ASYNC_UNSAFE"] = "true"
+
+        try:
+            from agentscope.scripts._aws_runtime import AWSRuntimeWorkspace
+
+            tenant_id = str(execution_round.tenant_id) if execution_round.tenant_id else 'default'
+            project_id = str(execution_round.project_id) if execution_round.project_id else None
+            execution_id = str(execution_round.id)[:8]
+
+            runtime = AWSRuntimeWorkspace(
+                execution_id=execution_id,
+                tenant_id=tenant_id,
+                project_id=project_id,
+                cluster_name=getattr(settings, 'AWS_ECS_CLUSTER', 'hivecore-cluster'),
+                task_definition=getattr(settings, 'AWS_ECS_TASK_DEFINITION', 'hivecore-sandbox'),
+                s3_bucket=getattr(settings, 'AWS_S3_WORKSPACE_BUCKET', None),
+                region=getattr(settings, 'AWS_REGION', 'ap-northeast-1'),
+                timeout=600,
+            )
+
+            # Attach and stop
+            runtime.task_arn = task_arn
+            runtime._started = True
+            await runtime.stop()
+            logger.info(f"[stop_project_runtime] Stopped: {task_arn}")
+            return True
+
+        except Exception as e:
+            logger.warning(f"[stop_project_runtime] Error: {e}")
+            return False
+
+    return _run_async_in_thread(_stop())
+
+
 def execute_single_requirement_sync(
     execution_round,
     requirement_execution,
+    runtime_task_arn: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Synchronous wrapper for single requirement execution.
@@ -152,6 +266,7 @@ def execute_single_requirement_sync(
     Args:
         execution_round: ExecutionRound model instance
         requirement_execution: RequirementExecution model instance
+        runtime_task_arn: Optional ECS task ARN to attach to (project-level container)
 
     Returns:
         Result dict with structure:
@@ -182,22 +297,20 @@ def execute_single_requirement_sync(
             llm, provider = initialize_llm('auto')
             logger.info(f"[{req_id}] LLM initialized: {provider}")
 
-            # Check if runtime mode is enabled (Docker container execution)
+            # Check if runtime mode is enabled
             use_runtime = getattr(settings, 'USE_RUNTIME_WORKSPACE', True)
 
             workspace_dir = None
 
-            if use_runtime:
-                # Use AWS ECS Fargate for isolated execution
+            if use_runtime and runtime_task_arn:
+                # Attach to existing project-level ECS container
                 try:
                     from agentscope.scripts._aws_runtime import AWSRuntimeWorkspace
 
-                    # Get tenant and project info
                     tenant_id = str(execution_round.tenant_id) if execution_round.tenant_id else 'default'
                     project_id = str(execution_round.project_id) if execution_round.project_id else None
-                    execution_id = f"{str(execution_round.id)[:8]}-{req_id}"
+                    execution_id = str(execution_round.id)[:8]
 
-                    # Each requirement gets its own ECS task
                     runtime_workspace = AWSRuntimeWorkspace(
                         execution_id=execution_id,
                         tenant_id=tenant_id,
@@ -209,15 +322,15 @@ def execute_single_requirement_sync(
                         timeout=600,
                     )
 
-                    # Start the ECS task
-                    if not await runtime_workspace.start():
-                        logger.warning(f"[{req_id}] Failed to start AWS runtime, falling back to local mode")
-                        runtime_workspace = None
+                    # Attach to existing container (don't start a new one)
+                    if await runtime_workspace.attach(runtime_task_arn):
+                        logger.info(f"[{req_id}] Attached to runtime: {runtime_task_arn}")
                     else:
-                        logger.info(f"[{req_id}] AWS runtime started: task={runtime_workspace.task_arn}")
+                        logger.warning(f"[{req_id}] Failed to attach to runtime, falling back to local mode")
+                        runtime_workspace = None
 
                 except Exception as e:
-                    logger.warning(f"[{req_id}] AWS runtime init failed: {e}, falling back to local mode")
+                    logger.warning(f"[{req_id}] Runtime attach failed: {e}, falling back to local mode")
                     runtime_workspace = None
 
             if not runtime_workspace:
@@ -319,8 +432,10 @@ def execute_single_requirement_sync(
             raise
 
         finally:
-            # Clean up runtime workspace
-            if runtime_workspace:
+            # Clean up runtime workspace ONLY if we started it ourselves
+            # When using project-level container (runtime_task_arn provided),
+            # the container is stopped in complete_execution_task, not here
+            if runtime_workspace and not runtime_task_arn:
                 try:
                     await runtime_workspace.stop()
                     logger.info(f"[{req_id}] Runtime workspace stopped")

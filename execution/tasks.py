@@ -413,7 +413,8 @@ def plan_execution_task(self, execution_round_id: str):
     2. Call LLM to parse requirements (collect_spec)
     3. Generate acceptance criteria (enrich_acceptance_map)
     4. Analyze dependencies, create RequirementExecution records
-    5. Schedule first inner round (schedule_round_task)
+    5. Start project-level ECS container (if runtime mode enabled)
+    6. Schedule first inner round (schedule_round_task)
 
     Duration: 10-60 seconds
 
@@ -421,7 +422,7 @@ def plan_execution_task(self, execution_round_id: str):
         execution_round_id: ExecutionRound UUID string
     """
     from execution.models import ExecutionRound, RequirementExecution
-    from execution.sharding_runner import parse_requirements_sync
+    from execution.sharding_runner import parse_requirements_sync, start_project_runtime_sync
 
     logger.info(f"[Plan] Starting execution planning: {execution_round_id}")
 
@@ -458,7 +459,19 @@ def plan_execution_task(self, execution_round_id: str):
 
         _publish_progress(execution_round, 'planning', 'Creating execution plan', 8)
 
-        # 4. Extract dependencies and create RequirementExecution records
+        # 4. Start project-level ECS container (shared by all requirements)
+        runtime_task_arn = start_project_runtime_sync(execution_round)
+        if runtime_task_arn:
+            logger.info(f"[Plan] Started project-level runtime: {runtime_task_arn}")
+            # Store task ARN in options for later use
+            options = execution_round.options or {}
+            options['runtime_task_arn'] = runtime_task_arn
+            execution_round.options = options
+            execution_round.save(update_fields=['options', 'updated_at'])
+        else:
+            logger.info("[Plan] Runtime not started, using local mode")
+
+        # 5. Extract dependencies and create RequirementExecution records
         requirements = spec.get('requirements', [])
         dependencies = _extract_dependencies_from_spec(requirements)
 
@@ -589,11 +602,12 @@ def execute_requirement_task(self, requirement_execution_id: str):
     Phase 3: Execute a single requirement.
 
     Responsibilities:
-    1. Blueprint design
-    2. Code generation (stepwise_generate_files)
-    3. QA acceptance
-    4. Code validation (optional)
-    5. Update RequirementExecution status
+    1. Attach to project-level ECS container (if available)
+    2. Blueprint design
+    3. Code generation (stepwise_generate_files)
+    4. QA acceptance
+    5. Code validation (optional)
+    6. Update RequirementExecution status
 
     Duration: 1-5 minutes
 
@@ -620,11 +634,18 @@ def execute_requirement_task(self, requirement_execution_id: str):
 
     execution_round = req_exec.execution_round
 
+    # Get project-level runtime task ARN (if started in plan phase)
+    options = execution_round.options or {}
+    runtime_task_arn = options.get('runtime_task_arn')
+    if runtime_task_arn:
+        logger.info(f"[Execute] Using project-level runtime: {runtime_task_arn}")
+
     try:
         # Execute requirement (Blueprint -> Code -> QA)
         result = execute_single_requirement_sync(
             execution_round=execution_round,
             requirement_execution=req_exec,
+            runtime_task_arn=runtime_task_arn,  # Pass to attach instead of start new
         )
 
         # Update results
@@ -901,6 +922,21 @@ def complete_execution_task(self, execution_round_id: str):
 
         except Exception as e:
             logger.error(f"[Complete] Failed to merge workspaces: {e}")
+
+    # Stop project-level ECS container (if started)
+    options = execution_round.options or {}
+    runtime_task_arn = options.get('runtime_task_arn')
+    if runtime_task_arn:
+        try:
+            from .sharding_runner import stop_project_runtime_sync
+            stop_project_runtime_sync(execution_round, runtime_task_arn)
+            logger.info(f"[Complete] Stopped project-level runtime: {runtime_task_arn}")
+            # Clear task ARN from options
+            options.pop('runtime_task_arn', None)
+            execution_round.options = options
+            execution_round.save(update_fields=['options', 'updated_at'])
+        except Exception as e:
+            logger.error(f"[Complete] Failed to stop runtime: {e}")
 
     # Generate summary
     total = passed + failed
