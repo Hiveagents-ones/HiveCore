@@ -655,6 +655,29 @@ def execute_requirement_task(self, requirement_execution_id: str):
             f"pass_rate={pass_rate:.1%}, passed={req_exec.is_passed}"
         )
 
+        # Merge agent workspaces into requirement's delivery directory
+        # This is the first level of merge (Agent → Delivery within a requirement)
+        try:
+            from .sharding_runner import merge_agents_to_delivery
+
+            project_id = str(execution_round.project_id) if execution_round.project_id else 'default'
+            spec = execution_round.parsed_spec or {}
+
+            merge_result = merge_agents_to_delivery(
+                project_id=project_id,
+                req_id=req_exec.requirement_id,
+                agent_ids=None,  # Auto-discover all agents
+                spec=spec,
+            )
+            logger.info(
+                f"[Execute] Agent merge for {req_exec.requirement_id}: "
+                f"{len(merge_result.get('merged_files', []))} files, "
+                f"{len(merge_result.get('conflicts_resolved', []))} conflicts resolved"
+            )
+        except Exception as e:
+            logger.warning(f"[Execute] Agent merge failed for {req_exec.requirement_id}: {e}")
+            # Non-fatal error, continue with result
+
         return {
             'requirement_id': req_exec.requirement_id,
             'requirement_execution_id': requirement_execution_id,

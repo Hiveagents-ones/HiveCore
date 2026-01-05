@@ -180,20 +180,35 @@ def execute_single_requirement_sync(
             llm, provider = initialize_llm('auto')
             logger.info(f"[{req_id}] LLM initialized: {provider}")
 
-            # Setup workspace - each requirement gets its own isolated directory
-            # to avoid conflicts during parallel execution
+            # Setup workspace with two-level isolation: requirement + agent
+            # This prevents conflicts during parallel execution
             project_id = str(execution_round.project_id) if execution_round.project_id else 'default'
             workspace_base = Path(getattr(settings, 'EXECUTION_WORKSPACE_DIR', '/tmp/hivecore_workspaces'))
 
             # Structure:
             # /workspaces/{project_id}/
-            #   ├── working/              # Final merged code (updated after aggregation)
+            #   ├── working/                    # Final merged code (all requirements)
             #   └── requirements/
-            #       ├── {req_id}/         # Isolated workspace for each requirement
+            #       ├── {req_id}/
+            #       │   ├── delivery/           # Merged code from all agents for this requirement
+            #       │   └── agents/
+            #       │       ├── {agent_id}/     # Isolated workspace for each agent
+            #       │       └── ...
             #       └── ...
-            req_workspace = workspace_base / project_id / 'requirements' / req_id
-            req_workspace.mkdir(parents=True, exist_ok=True)
-            workspace_dir = req_workspace
+
+            # For now, use a default agent ID (single agent per requirement)
+            # Future: support multiple agents per requirement
+            agent_id = requirement_execution.agent_id if hasattr(requirement_execution, 'agent_id') and requirement_execution.agent_id else 'default'
+
+            req_base = workspace_base / project_id / 'requirements' / req_id
+            agent_workspace = req_base / 'agents' / agent_id
+            agent_workspace.mkdir(parents=True, exist_ok=True)
+
+            # Also ensure delivery dir exists for merging
+            delivery_dir = req_base / 'delivery'
+            delivery_dir.mkdir(parents=True, exist_ok=True)
+
+            workspace_dir = agent_workspace
 
             # Get parsed spec from execution round
             spec = execution_round.parsed_spec or {}
@@ -358,7 +373,9 @@ def _collect_all_files(
     requirement_ids: list[str],
 ) -> Dict[str, Dict[str, Any]]:
     """
-    Collect all files from requirement workspaces and detect conflicts.
+    Collect all files from requirement delivery directories and detect conflicts.
+
+    Now reads from {req_id}/delivery/ instead of {req_id}/ directly.
 
     Returns:
         Dict mapping relative file paths to:
@@ -370,13 +387,17 @@ def _collect_all_files(
     file_map: Dict[str, Dict[str, Any]] = {}
 
     for req_id in requirement_ids:
-        req_workspace = requirements_dir / req_id
-        if not req_workspace.exists():
-            continue
+        # Read from delivery directory (merged result of all agents for this requirement)
+        req_delivery = requirements_dir / req_id / 'delivery'
+        if not req_delivery.exists():
+            # Fallback: try old structure (direct in req_id dir)
+            req_delivery = requirements_dir / req_id
+            if not req_delivery.exists():
+                continue
 
-        for src_path in req_workspace.rglob('*'):
+        for src_path in req_delivery.rglob('*'):
             if src_path.is_file():
-                rel_path = str(src_path.relative_to(req_workspace))
+                rel_path = str(src_path.relative_to(req_delivery))
 
                 if rel_path not in file_map:
                     file_map[rel_path] = {"sources": [], "has_conflict": False}
@@ -397,6 +418,116 @@ def _collect_all_files(
                     file_map[rel_path]["has_conflict"] = True
 
     return file_map
+
+
+def merge_agents_to_delivery(
+    project_id: str,
+    req_id: str,
+    agent_ids: list[str] | None = None,
+    spec: Dict[str, Any] | None = None,
+) -> Dict[str, Any]:
+    """
+    Merge all agent workspaces into the requirement's delivery directory.
+
+    This is the first level of merge (Agent → Delivery within a requirement).
+
+    Args:
+        project_id: Project identifier
+        req_id: Requirement ID
+        agent_ids: List of agent IDs to merge, or None to discover all
+        spec: Parsed spec for conflict resolution context
+
+    Returns:
+        Dict with merge results
+    """
+    import shutil
+
+    workspace_base = Path(getattr(settings, 'EXECUTION_WORKSPACE_DIR', '/tmp/hivecore_workspaces'))
+    req_base = workspace_base / project_id / 'requirements' / req_id
+    agents_dir = req_base / 'agents'
+    delivery_dir = req_base / 'delivery'
+
+    delivery_dir.mkdir(parents=True, exist_ok=True)
+
+    # Discover agents if not specified
+    if agent_ids is None:
+        if agents_dir.exists():
+            agent_ids = [d.name for d in agents_dir.iterdir() if d.is_dir()]
+        else:
+            agent_ids = []
+
+    if not agent_ids:
+        logger.info(f"[Merge] No agents to merge for {req_id}")
+        return {"merged_files": [], "conflicts_resolved": [], "delivery_dir": str(delivery_dir)}
+
+    logger.info(f"[Merge] Merging {len(agent_ids)} agents for {req_id}: {agent_ids}")
+
+    # Collect files from all agents
+    file_map: Dict[str, Dict[str, Any]] = {}
+
+    for agent_id in agent_ids:
+        agent_workspace = agents_dir / agent_id
+        if not agent_workspace.exists():
+            continue
+
+        for src_path in agent_workspace.rglob('*'):
+            if src_path.is_file():
+                rel_path = str(src_path.relative_to(agent_workspace))
+
+                if rel_path not in file_map:
+                    file_map[rel_path] = {"sources": [], "has_conflict": False}
+
+                try:
+                    content = src_path.read_text(encoding='utf-8')
+                except Exception:
+                    content = src_path.read_bytes().decode('utf-8', errors='replace')
+
+                file_map[rel_path]["sources"].append({
+                    "req_id": f"{req_id}/{agent_id}",  # For logging
+                    "agent_id": agent_id,
+                    "path": src_path,
+                    "content": content,
+                })
+
+                if len(file_map[rel_path]["sources"]) > 1:
+                    file_map[rel_path]["has_conflict"] = True
+
+    # Merge files
+    merged_files = []
+    conflicts_resolved = []
+
+    for rel_path, file_info in file_map.items():
+        dst_path = delivery_dir / rel_path
+        dst_path.parent.mkdir(parents=True, exist_ok=True)
+
+        sources = file_info["sources"]
+
+        try:
+            if file_info["has_conflict"]:
+                logger.info(f"[Merge] Agent conflict for {rel_path}: {[s['agent_id'] for s in sources]}")
+
+                if spec:
+                    merged_content = _merge_file_with_agent(rel_path, sources, spec)
+                    dst_path.write_text(merged_content, encoding='utf-8')
+                    conflicts_resolved.append(rel_path)
+                else:
+                    # No spec, use last agent's version
+                    shutil.copy2(sources[-1]["path"], dst_path)
+            else:
+                shutil.copy2(sources[0]["path"], dst_path)
+
+            merged_files.append(rel_path)
+
+        except Exception as e:
+            logger.error(f"[Merge] Failed to merge {rel_path}: {e}")
+
+    logger.info(f"[Merge] Agent merge for {req_id}: {len(merged_files)} files, {len(conflicts_resolved)} conflicts resolved")
+
+    return {
+        "merged_files": merged_files,
+        "conflicts_resolved": conflicts_resolved,
+        "delivery_dir": str(delivery_dir),
+    }
 
 
 def _merge_file_with_agent(
