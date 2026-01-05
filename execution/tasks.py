@@ -390,20 +390,6 @@ def sync_artifact_from_workspace(
         f"({size_bytes} bytes, storage: {'S3' if s3_key else 'DB'})"
     )
 
-    # Push SSE event for real-time artifact notification
-    if execution_round.tenant:
-        from observability.pubsub import publish_artifact_event
-        publish_artifact_event(
-            execution_round_id=execution_round_id,
-            tenant_id=str(execution_round.tenant.id),
-            artifact_type=artifact_type,
-            file_path=file_path,
-            file_name=os.path.basename(file_path),
-            language=language,
-            size_bytes=size_bytes,
-            generated_by=artifact.generated_by_agent.name if artifact.generated_by_agent else '',
-        )
-
     return {
         'artifact_id': str(artifact.id),
         'file_path': file_path,
