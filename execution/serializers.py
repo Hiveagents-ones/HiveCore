@@ -94,6 +94,10 @@ class ExecutionStartSerializer(serializers.Serializer):
     pr_mode = serializers.BooleanField(default=True)
     skip_validation = serializers.BooleanField(default=False)
     edit_mode = serializers.BooleanField(default=False)
+    use_task_sharding = serializers.BooleanField(
+        default=False,
+        help_text='Enable task sharding for fine-grained per-requirement execution'
+    )
 
 
 class AgentSelectionDecisionListSerializer(serializers.ModelSerializer):

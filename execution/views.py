@@ -422,6 +422,9 @@ class ProjectExecuteView(APIView):
         last_round = ExecutionRound.objects.filter(project=project).order_by('-round_number').first()
         next_round_number = (last_round.round_number + 1) if last_round else 1
 
+        # Check if task sharding is enabled
+        use_task_sharding = data.get('use_task_sharding', False)
+
         # Create execution round
         execution_round = ExecutionRound.objects.create(
             tenant=tenant,
@@ -436,6 +439,7 @@ class ProjectExecuteView(APIView):
                 'edit_mode': data['edit_mode'],
             },
             status='pending',
+            use_task_sharding=use_task_sharding,
         )
 
         # Create progress tracker
@@ -445,35 +449,145 @@ class ProjectExecuteView(APIView):
             total_requirements=1,  # Will be updated during execution
         )
 
-        # Start Celery task
+        # Auto-create team members if project doesn't have any
+        self._ensure_team_members(project)
+
+        # Try Celery first, fallback to thread execution
+        task_id = None
+        use_thread = False
+
         try:
-            from .tasks import execute_project_task
-            task = execute_project_task.delay(
-                execution_round_id=str(execution_round.id),
-            )
-            execution_round.celery_task_id = task.id
-            execution_round.save(update_fields=['celery_task_id'])
+            # Check if Redis/Celery is available with a short timeout
+            from django.conf import settings
+            import redis as redis_lib
+
+            redis_url = getattr(settings, 'CELERY_BROKER_URL', 'redis://localhost:6379/0')
+            r = redis_lib.from_url(redis_url, socket_connect_timeout=2)
+            r.ping()  # Test connection
+
+            # Redis is available, use Celery
+            if use_task_sharding:
+                # Use task sharding for fine-grained execution
+                from .tasks import start_sharded_execution
+                task_id = start_sharded_execution(str(execution_round.id))
+            else:
+                # Use traditional monolithic execution
+                from .tasks import execute_project_task
+                task = execute_project_task.delay(
+                    execution_round_id=str(execution_round.id),
+                )
+                task_id = task.id
+                execution_round.celery_task_id = task_id
+                execution_round.save(update_fields=['celery_task_id'])
         except Exception as e:
-            # If Celery is not available, mark as failed
-            execution_round.fail(f'Failed to start task: {str(e)}')
-            return Response(
-                {
-                    'error': 'Failed to start execution',
-                    'detail': str(e),
-                    'execution_round_id': str(execution_round.id),
-                },
-                status=status.HTTP_503_SERVICE_UNAVAILABLE
-            )
+            # Celery/Redis not available, use thread-based execution
+            import logging
+            import threading
+            logger = logging.getLogger(__name__)
+            logger.warning(f'Celery not available ({e}), using thread execution')
+            use_thread = True
+
+            def run_in_thread():
+                """Run execution task in a background thread."""
+                try:
+                    # Import runner directly to avoid Celery self parameter issue
+                    from execution.runner import run_execution_for_api
+                    from execution.models import ExecutionRound, ExecutionProgress
+
+                    exec_round = ExecutionRound.objects.select_related(
+                        'project', 'tenant'
+                    ).get(id=execution_round.id)
+
+                    exec_round.start()
+
+                    try:
+                        progress = exec_round.progress
+                    except ExecutionProgress.DoesNotExist:
+                        progress = ExecutionProgress.objects.create(
+                            execution_round=exec_round
+                        )
+
+                    progress.update_phase('executing', '', 'Starting execution')
+
+                    api_key = exec_round.tenant.api_key if exec_round.tenant else None
+                    options = exec_round.options or {}
+
+                    result = run_execution_for_api(
+                        execution_round_id=str(exec_round.id),
+                        project_id=str(exec_round.project.id),
+                        requirement=exec_round.requirement_text,
+                        api_key=api_key,
+                        backend_url='http://localhost:8000',
+                        max_rounds=options.get('max_rounds', 3),
+                        use_parallel=options.get('parallel', True),
+                        use_pr_mode=options.get('pr_mode', True),
+                        skip_validation=options.get('skip_validation', False),
+                        use_edit_mode=options.get('edit_mode', False),
+                    )
+
+                    exec_round.total_tokens = result.get('total_tokens', 0)
+                    exec_round.total_cost_usd = result.get('total_cost', 0)
+                    exec_round.total_llm_calls = result.get('total_llm_calls', 0)
+                    exec_round.complete(summary=result.get('summary', ''))
+                    progress.update_phase('completed', '', '')
+                    progress.update_progress(100)
+                    logger.info(f'Thread execution completed: {exec_round.id}')
+                except Exception as ex:
+                    import traceback
+                    error_msg = f'{type(ex).__name__}: {str(ex)}'
+                    logger.error(f'Thread execution failed: {error_msg}')
+                    logger.error(traceback.format_exc())
+                    try:
+                        exec_round.fail(error_msg)
+                    except Exception:
+                        pass
+
+            thread = threading.Thread(target=run_in_thread, daemon=True)
+            thread.start()
+            task_id = f'thread-{execution_round.id}'
 
         return Response(
             {
                 'execution_round_id': str(execution_round.id),
-                'task_id': task.id,
+                'task_id': task_id,
                 'status': 'started',
                 'round_number': next_round_number,
+                'execution_mode': 'thread' if use_thread else 'celery',
             },
             status=status.HTTP_202_ACCEPTED
         )
+
+    def _ensure_team_members(self, project):
+        """Ensure project has team members.
+
+        If the project has no team members, create them from available agents.
+        This ensures the frontend WorkPreview page has data to display.
+        """
+        from api.models import Agent, TeamMember
+
+        # Check if project already has team members
+        if project.team_members.exists():
+            return
+
+        # Get all available agents
+        agents = Agent.objects.all()[:6]  # Limit to 6 team members
+
+        # Create team members for each agent
+        for agent in agents:
+            TeamMember.objects.create(
+                project=project,
+                agent=agent,
+                role=agent.duty or agent.name,
+                status='Await',
+                time_spent='0mins',
+                cost=0,
+                progress=0,
+                progress_total=100,
+            )
+
+        # Update project member count
+        project.member_count = project.team_members.count()
+        project.save(update_fields=['member_count'])
 
 
 class ActiveExecutionsView(APIView):
@@ -754,7 +868,7 @@ class CreateMetasoAgentView(APIView):
         import uuid
         agent_no = f"metaso_{uuid.uuid4().hex[:8]}"
 
-        # Create the agent
+        # Create the agent (Agent is a system-level resource, no tenant field)
         agent = Agent.objects.create(
             name=spec['name'],
             agent_no=agent_no,
@@ -763,7 +877,6 @@ class CreateMetasoAgentView(APIView):
             preview='',
             avatar='',
             cost_per_min=0.0,
-            tenant=project.tenant,
         )
 
         # Return created agent
