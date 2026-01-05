@@ -114,7 +114,8 @@ def create_round_workflow(
         for req_id in batch:
             exec_id = req_id_to_exec_id.get(req_id)
             if exec_id:
-                tasks.append(execute_requirement_task.s(str(exec_id)))
+                # Use .si() (immutable signature) to prevent chain from passing results
+                tasks.append(execute_requirement_task.si(str(exec_id)))
             else:
                 logger.warning(f"No execution ID found for requirement {req_id}")
 
