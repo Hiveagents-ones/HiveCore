@@ -403,7 +403,7 @@ def sync_artifact_from_workspace(
 # Enable with: ExecutionRound.use_task_sharding = True
 
 
-@shared_task(bind=True, max_retries=0, time_limit=180, soft_time_limit=160)
+@shared_task(bind=True, max_retries=0, time_limit=600, soft_time_limit=540)
 def plan_execution_task(self, execution_round_id: str):
     """
     Phase 1: Parse requirements and create execution plan.
