@@ -846,6 +846,36 @@ def complete_execution_task(self, execution_round_id: str):
     execution_round.total_cost_usd = totals.get('total_cost') or 0
     execution_round.total_llm_calls = totals.get('total_calls') or 0
 
+    # Merge requirement workspaces into working directory
+    # Collect passed requirement IDs in dependency order
+    passed_req_ids = []
+    spec = execution_round.parsed_spec or {}
+    spec_requirements = spec.get('requirements', [])
+
+    # Use spec order (which is topologically sorted) for merge order
+    for req in spec_requirements:
+        req_id = req.get('id')
+        final_req = all_reqs.filter(
+            requirement_id=req_id
+        ).order_by('-inner_round_number', '-attempt_number').first()
+        if final_req and final_req.is_passed:
+            passed_req_ids.append(req_id)
+
+    # Merge files from passed requirements
+    if passed_req_ids:
+        try:
+            from .sharding_runner import merge_requirement_workspaces, cleanup_requirement_workspaces
+
+            project_id = str(execution_round.project_id) if execution_round.project_id else 'default'
+            merge_result = merge_requirement_workspaces(project_id, passed_req_ids)
+            logger.info(f"[Complete] Merged {len(merge_result.get('merged_files', []))} files to {merge_result.get('working_dir')}")
+
+            # Optionally clean up individual requirement workspaces
+            # cleanup_requirement_workspaces(project_id)  # Uncomment to enable cleanup
+
+        except Exception as e:
+            logger.error(f"[Complete] Failed to merge workspaces: {e}")
+
     # Generate summary
     total = passed + failed
     summary = f"Completed: {passed}/{total} requirements passed"

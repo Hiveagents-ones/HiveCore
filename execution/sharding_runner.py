@@ -180,11 +180,20 @@ def execute_single_requirement_sync(
             llm, provider = initialize_llm('auto')
             logger.info(f"[{req_id}] LLM initialized: {provider}")
 
-            # Setup workspace
+            # Setup workspace - each requirement gets its own isolated directory
+            # to avoid conflicts during parallel execution
             project_id = str(execution_round.project_id) if execution_round.project_id else 'default'
             workspace_base = Path(getattr(settings, 'EXECUTION_WORKSPACE_DIR', '/tmp/hivecore_workspaces'))
-            workspace_dir = workspace_base / project_id
-            workspace_dir.mkdir(parents=True, exist_ok=True)
+
+            # Structure:
+            # /workspaces/{project_id}/
+            #   ├── working/              # Final merged code (updated after aggregation)
+            #   └── requirements/
+            #       ├── {req_id}/         # Isolated workspace for each requirement
+            #       └── ...
+            req_workspace = workspace_base / project_id / 'requirements' / req_id
+            req_workspace.mkdir(parents=True, exist_ok=True)
+            workspace_dir = req_workspace
 
             # Get parsed spec from execution round
             spec = execution_round.parsed_spec or {}
@@ -339,3 +348,129 @@ def _mock_execute_requirement(requirement_execution) -> Dict[str, Any]:
         'cost': random.uniform(0.01, 0.1),
         'llm_calls': random.randint(3, 10),
     }
+
+
+# ============ Workspace Merge Functions ============
+
+
+def merge_requirement_workspaces(
+    project_id: str,
+    passed_requirement_ids: list[str],
+) -> Dict[str, Any]:
+    """
+    Merge files from passed requirements into the working directory.
+
+    This function is called after aggregation to consolidate code from
+    individual requirement workspaces into the final working directory.
+
+    Files are merged in dependency order (already sorted by topological sort).
+    Later requirements can override earlier ones (expected behavior for
+    dependent requirements that build on previous work).
+
+    Args:
+        project_id: Project identifier
+        passed_requirement_ids: List of requirement IDs that passed QA,
+                               in dependency order
+
+    Returns:
+        Dict with merge results:
+        {
+            "merged_files": ["path1", "path2", ...],
+            "conflicts": [],  # Future: track file conflicts
+            "working_dir": "/path/to/working"
+        }
+    """
+    import shutil
+
+    workspace_base = Path(getattr(settings, 'EXECUTION_WORKSPACE_DIR', '/tmp/hivecore_workspaces'))
+    project_dir = workspace_base / project_id
+    working_dir = project_dir / 'working'
+    requirements_dir = project_dir / 'requirements'
+
+    # Ensure working directory exists
+    working_dir.mkdir(parents=True, exist_ok=True)
+
+    merged_files = []
+    file_sources = {}  # Track which requirement each file came from
+
+    logger.info(f"[Merge] Merging {len(passed_requirement_ids)} requirement workspaces to {working_dir}")
+
+    for req_id in passed_requirement_ids:
+        req_workspace = requirements_dir / req_id
+
+        if not req_workspace.exists():
+            logger.warning(f"[Merge] Workspace not found for {req_id}: {req_workspace}")
+            continue
+
+        # Walk through all files in requirement workspace
+        for src_path in req_workspace.rglob('*'):
+            if src_path.is_file():
+                # Get relative path within requirement workspace
+                rel_path = src_path.relative_to(req_workspace)
+                dst_path = working_dir / rel_path
+
+                # Create parent directories
+                dst_path.parent.mkdir(parents=True, exist_ok=True)
+
+                # Copy file (overwrite if exists - later requirements take precedence)
+                try:
+                    shutil.copy2(src_path, dst_path)
+                    rel_str = str(rel_path)
+
+                    if rel_str in file_sources:
+                        logger.debug(f"[Merge] File {rel_str} overwritten: {file_sources[rel_str]} -> {req_id}")
+
+                    file_sources[rel_str] = req_id
+
+                    if rel_str not in merged_files:
+                        merged_files.append(rel_str)
+
+                except Exception as e:
+                    logger.error(f"[Merge] Failed to copy {src_path} -> {dst_path}: {e}")
+
+    logger.info(f"[Merge] Merged {len(merged_files)} files from {len(passed_requirement_ids)} requirements")
+
+    return {
+        "merged_files": merged_files,
+        "file_sources": file_sources,
+        "conflicts": [],  # Future enhancement: detect and track conflicts
+        "working_dir": str(working_dir),
+    }
+
+
+def cleanup_requirement_workspaces(
+    project_id: str,
+    requirement_ids: list[str] | None = None,
+) -> None:
+    """
+    Clean up individual requirement workspaces after successful merge.
+
+    Args:
+        project_id: Project identifier
+        requirement_ids: Specific requirements to clean up, or None for all
+    """
+    import shutil
+
+    workspace_base = Path(getattr(settings, 'EXECUTION_WORKSPACE_DIR', '/tmp/hivecore_workspaces'))
+    requirements_dir = workspace_base / project_id / 'requirements'
+
+    if not requirements_dir.exists():
+        return
+
+    if requirement_ids is None:
+        # Clean all requirement workspaces
+        try:
+            shutil.rmtree(requirements_dir)
+            logger.info(f"[Cleanup] Removed all requirement workspaces for project {project_id}")
+        except Exception as e:
+            logger.error(f"[Cleanup] Failed to remove requirements dir: {e}")
+    else:
+        # Clean specific workspaces
+        for req_id in requirement_ids:
+            req_workspace = requirements_dir / req_id
+            if req_workspace.exists():
+                try:
+                    shutil.rmtree(req_workspace)
+                    logger.debug(f"[Cleanup] Removed workspace for {req_id}")
+                except Exception as e:
+                    logger.error(f"[Cleanup] Failed to remove {req_id} workspace: {e}")
