@@ -55,6 +55,24 @@ class ExecutionRound(TenantModelMixin):
     total_cost_usd = models.DecimalField(max_digits=10, decimal_places=6, default=0)
     total_llm_calls = models.IntegerField(default=0)
 
+    # ============ 任务分片新增字段 ============
+    # 内部轮次管理（区别于 round_number 是用户可见的轮次）
+    current_inner_round = models.IntegerField(default=0, help_text='Current inner round number for task sharding')
+    total_inner_rounds = models.IntegerField(default=0, help_text='Total completed inner rounds')
+
+    # Spec 缓存（避免重复解析）
+    parsed_spec = models.JSONField(null=True, blank=True, help_text='Parsed requirement specification')
+    acceptance_map = models.JSONField(null=True, blank=True, help_text='Acceptance criteria map')
+
+    # 汇总统计
+    total_requirements = models.IntegerField(default=0, help_text='Total number of requirements')
+    passed_requirements = models.IntegerField(default=0, help_text='Number of passed requirements')
+    failed_requirements = models.IntegerField(default=0, help_text='Number of failed requirements')
+
+    # 任务分片模式标志
+    use_task_sharding = models.BooleanField(default=False, help_text='Whether to use task sharding mode')
+    # ============ 任务分片新增字段结束 ============
+
     # Metadata
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -110,6 +128,187 @@ class ExecutionRound(TenantModelMixin):
             return None
         end = self.completed_at or timezone.now()
         return (end - self.started_at).total_seconds()
+
+    # ============ 任务分片辅助方法 ============
+    def get_pending_requirements(self, inner_round: int):
+        """Get pending requirements for a specific inner round."""
+        return list(self.requirement_executions.filter(
+            inner_round_number=inner_round,
+            status='pending'
+        ).values_list('requirement_id', flat=True))
+
+    def get_failed_requirements(self, inner_round: int):
+        """Get failed requirements for a specific inner round (need retry)."""
+        return list(self.requirement_executions.filter(
+            inner_round_number=inner_round,
+            status='completed',
+            is_passed=False
+        ).values_list('requirement_id', flat=True))
+
+    def update_requirement_stats(self):
+        """Update requirement statistics from RequirementExecution records."""
+        from django.db.models import Max
+
+        # Get the latest inner round for each requirement
+        latest_rounds = self.requirement_executions.values('requirement_id').annotate(
+            max_round=Max('inner_round_number')
+        )
+
+        passed = 0
+        failed = 0
+        for item in latest_rounds:
+            req = self.requirement_executions.filter(
+                requirement_id=item['requirement_id'],
+                inner_round_number=item['max_round']
+            ).first()
+            if req:
+                if req.is_passed:
+                    passed += 1
+                else:
+                    failed += 1
+
+        self.passed_requirements = passed
+        self.failed_requirements = failed
+        self.save(update_fields=['passed_requirements', 'failed_requirements', 'updated_at'])
+    # ============ 任务分片辅助方法结束 ============
+
+
+class RequirementExecution(TenantModelMixin):
+    """Execution state for a single requirement.
+
+    Each requirement may have multiple records across inner rounds.
+    Supports fine-grained tracking of requirement progress.
+    """
+
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),       # Waiting to be executed
+        ('scheduled', 'Scheduled'),   # Celery task scheduled
+        ('running', 'Running'),       # Currently executing
+        ('completed', 'Completed'),   # Execution finished (may or may not pass)
+        ('failed', 'Failed'),         # Execution failed (exception)
+        ('skipped', 'Skipped'),       # Skipped (dependency not met)
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    # Relationships
+    execution_round = models.ForeignKey(
+        ExecutionRound,
+        on_delete=models.CASCADE,
+        related_name='requirement_executions',
+    )
+
+    # Requirement identification
+    requirement_id = models.CharField(max_length=50, db_index=True, help_text='e.g., REQ-001')
+    requirement_content = models.TextField(help_text='Requirement description')
+    requirement_type = models.CharField(max_length=50, blank=True, help_text='e.g., backend, frontend, database')
+
+    # Round tracking (inner rounds for task sharding)
+    inner_round_number = models.IntegerField(default=1, help_text='Inner round number for retries')
+    attempt_number = models.IntegerField(default=1, help_text='Attempt number within this round')
+
+    # Status
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    celery_task_id = models.CharField(max_length=255, blank=True, db_index=True)
+
+    # Dependencies
+    depends_on = models.JSONField(default=list, help_text='List of requirement IDs this depends on')
+
+    # Execution results
+    blueprint = models.JSONField(null=True, blank=True, help_text='Blueprint design result')
+    code_result = models.JSONField(null=True, blank=True, help_text='Code generation result')
+    qa_result = models.JSONField(null=True, blank=True, help_text='QA acceptance result')
+    validation_result = models.JSONField(null=True, blank=True, help_text='Code validation result')
+
+    # QA statistics
+    acceptance_criteria_total = models.IntegerField(default=0, help_text='Total acceptance criteria')
+    acceptance_criteria_passed = models.IntegerField(default=0, help_text='Passed acceptance criteria')
+    pass_rate = models.FloatField(default=0.0, help_text='Pass rate (0.0 - 1.0)')
+    is_passed = models.BooleanField(default=False, help_text='Whether requirement passed (pass_rate >= threshold)')
+
+    # Modified files
+    modified_files = models.JSONField(default=list, help_text='List of files modified by this requirement')
+
+    # Token/Cost statistics
+    tokens_used = models.IntegerField(default=0)
+    cost_usd = models.DecimalField(max_digits=10, decimal_places=6, default=0)
+    llm_calls = models.IntegerField(default=0)
+
+    # Error information
+    error_message = models.TextField(blank=True)
+    error_traceback = models.TextField(blank=True)
+
+    # Timing
+    started_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['inner_round_number', 'requirement_id']
+        indexes = [
+            models.Index(fields=['execution_round', 'inner_round_number']),
+            models.Index(fields=['execution_round', 'status']),
+            models.Index(fields=['requirement_id']),
+            models.Index(fields=['celery_task_id']),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=['execution_round', 'requirement_id', 'inner_round_number'],
+                name='unique_req_per_inner_round'
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.requirement_id} (Round {self.inner_round_number}, {self.status})"
+
+    def start(self):
+        """Mark as started."""
+        self.status = 'running'
+        self.started_at = timezone.now()
+        self.save(update_fields=['status', 'started_at', 'updated_at'])
+
+    def complete(self, passed: bool, pass_rate: float = 0.0):
+        """Mark as completed."""
+        self.status = 'completed'
+        self.completed_at = timezone.now()
+        self.is_passed = passed
+        self.pass_rate = pass_rate
+        self.save(update_fields=[
+            'status', 'completed_at', 'is_passed', 'pass_rate', 'updated_at'
+        ])
+
+    def fail(self, error_message: str, traceback: str = ''):
+        """Mark as failed."""
+        self.status = 'failed'
+        self.completed_at = timezone.now()
+        self.error_message = error_message
+        self.error_traceback = traceback
+        self.save(update_fields=[
+            'status', 'completed_at', 'error_message', 'error_traceback', 'updated_at'
+        ])
+
+    def skip(self, reason: str = ''):
+        """Mark as skipped."""
+        self.status = 'skipped'
+        self.completed_at = timezone.now()
+        self.error_message = reason
+        self.save(update_fields=['status', 'completed_at', 'error_message', 'updated_at'])
+
+    @property
+    def duration_seconds(self):
+        """Get execution duration in seconds."""
+        if not self.started_at:
+            return None
+        end = self.completed_at or timezone.now()
+        return (end - self.started_at).total_seconds()
+
+    def update_stats(self, tokens: int = 0, cost: float = 0, llm_calls: int = 0):
+        """Update token/cost statistics."""
+        self.tokens_used += tokens
+        self.cost_usd += cost
+        self.llm_calls += llm_calls
+        self.save(update_fields=['tokens_used', 'cost_usd', 'llm_calls', 'updated_at'])
 
 
 class AgentSelectionDecision(TenantModelMixin):
@@ -233,6 +432,16 @@ class ExecutionArtifact(TenantModelMixin):
         related_name='artifacts',
     )
 
+    # Optional: link to specific requirement execution
+    requirement_execution = models.ForeignKey(
+        RequirementExecution,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='artifacts',
+        help_text='The requirement execution that generated this artifact'
+    )
+
     # File info
     artifact_type = models.CharField(max_length=20, choices=ARTIFACT_TYPE_CHOICES, default='code')
     file_path = models.CharField(max_length=500, help_text='Relative path in workspace')
@@ -285,6 +494,16 @@ class ExecutionLog(TenantModelMixin):
         ExecutionRound,
         on_delete=models.CASCADE,
         related_name='logs',
+    )
+
+    # Optional: link to specific requirement execution
+    requirement_execution = models.ForeignKey(
+        RequirementExecution,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='logs',
+        help_text='The requirement execution this log belongs to'
     )
 
     # Log details
@@ -342,6 +561,10 @@ class ExecutionProgress(models.Model):
     completed_requirements = models.IntegerField(default=0)
     total_requirements = models.IntegerField(default=0)
 
+    # Current requirement being processed (for task sharding)
+    current_requirement_id = models.CharField(max_length=50, blank=True)
+    current_inner_round = models.IntegerField(default=0)
+
     # Last update
     last_event = models.CharField(max_length=50, blank=True)
     last_event_data = models.JSONField(default=dict)
@@ -371,3 +594,9 @@ class ExecutionProgress(models.Model):
         self.last_event = event_type
         self.last_event_data = event_data or {}
         self.save(update_fields=['last_event', 'last_event_data', 'updated_at'])
+
+    def update_requirement(self, requirement_id: str, inner_round: int):
+        """Update current requirement being processed."""
+        self.current_requirement_id = requirement_id
+        self.current_inner_round = inner_round
+        self.save(update_fields=['current_requirement_id', 'current_inner_round', 'updated_at'])

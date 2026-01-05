@@ -527,14 +527,12 @@ class AAChatService:
             clean_content = re.sub(r'```\s*\{.*?\}\s*```', '', clean_content, flags=re.DOTALL)
             clean_content = clean_content.strip()
 
-            # Only include requirements in done event if they weren't sent incrementally
-            requirements_for_done = []
-            if sent_requirement_count == 0:
-                # No requirements were sent incrementally, include all in done event
-                requirements_for_done = [
-                    {'content': r.content, 'type': r.type, 'delivery_standards': r.delivery_standards}
-                    for r in parsed.requirements
-                ]
+            # Always include requirements in done event for views.py to create DB records
+            # (even if they were also sent incrementally for real-time UI updates)
+            requirements_for_done = [
+                {'content': r.content, 'type': r.type, 'delivery_standards': r.delivery_standards}
+                for r in parsed.requirements
+            ]
 
             yield {
                 'type': 'done',
