@@ -148,11 +148,69 @@ class ProjectViewSet(TenantQuerySetMixin, viewsets.ModelViewSet):
     )
     @action(detail=True, methods=["get"])
     def team(self, request, pk=None):
-        """Get all team members for a specific project."""
+        """Get all team members for a specific project.
+
+        Auto-initializes team from available agents if project has no members.
+        """
         project = self.get_object()
+
+        # Auto-initialize team if empty
+        if not project.team_members.exists():
+            self._init_team_members(project)
+
         members = project.team_members.all()
         serializer = TeamMemberSerializer(members, many=True)
         return Response(serializer.data)
+
+    def _init_team_members(self, project):
+        """Initialize team members from available agents."""
+        agents = Agent.objects.all()[:6]
+        for agent in agents:
+            TeamMember.objects.create(
+                project=project,
+                agent=agent,
+                role=agent.duty or agent.name,
+                status='Await',
+                time_spent='0mins',
+                cost=0,
+                progress=0,
+                progress_total=100,
+            )
+        project.member_count = project.team_members.count()
+        project.save(update_fields=['member_count'])
+
+    @extend_schema(
+        summary="Initialize project team with default agents",
+        tags=["Projects"],
+        responses={200: TeamMemberSerializer(many=True)},
+    )
+    @action(detail=True, methods=["post"])
+    def init_team(self, request, pk=None):
+        """Initialize team members for a project if not already present.
+
+        This creates default team members from available agents.
+        Useful for projects created before the auto-team feature.
+        """
+        project = self.get_object()
+
+        # Check if project already has team members
+        if project.team_members.exists():
+            members = project.team_members.all()
+            serializer = TeamMemberSerializer(members, many=True)
+            return Response({
+                "message": "Team already initialized",
+                "members": serializer.data,
+            })
+
+        # Initialize team using helper method
+        self._init_team_members(project)
+
+        members = project.team_members.all()
+        serializer = TeamMemberSerializer(members, many=True)
+        return Response({
+            "message": f"Team initialized with {members.count()} members",
+            "members": serializer.data,
+        }, status=status.HTTP_201_CREATED)
 
 
 @extend_schema_view(

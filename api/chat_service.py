@@ -146,24 +146,46 @@ class AAChatService:
         self._model = None
 
     def _get_llm(self):
-        """Lazy-load LLM client using OpenAI-compatible API."""
+        """Lazy-load LLM client.
+
+        Supports multiple providers via LLM_PROVIDER env var:
+        - zhipu-anthropic: Zhipu AI with Anthropic-compatible API
+        - zhipu: Zhipu AI with OpenAI-compatible API
+        - siliconflow: SiliconFlow with OpenAI-compatible API
+        """
         if self._client is not None:
             return self._client, self._provider
 
         import os
+        provider = os.environ.get('LLM_PROVIDER', '').lower()
+
         try:
+            # Zhipu Anthropic mode
+            if provider == 'zhipu-anthropic':
+                zhipu_key = os.environ.get('ZHIPU_API_KEY')
+                zhipu_base = os.environ.get('ZHIPU_ANTHROPIC_BASE_URL', 'https://open.bigmodel.cn/api/anthropic')
+                zhipu_model = os.environ.get('ZHIPU_ANTHROPIC_MODEL', 'GLM-4.7')
+
+                if zhipu_key:
+                    from anthropic import Anthropic
+                    self._client = Anthropic(api_key=zhipu_key, base_url=zhipu_base)
+                    self._provider = 'zhipu-anthropic'
+                    self._model = zhipu_model
+                    logger.info(f"[LLM] Using Zhipu AI Anthropic-compatible API: {zhipu_model}")
+                    return self._client, self._provider
+
             from openai import OpenAI
 
-            # Try Zhipu first
+            # Try Zhipu OpenAI mode
             zhipu_key = os.environ.get('ZHIPU_API_KEY')
             zhipu_base = os.environ.get('ZHIPU_BASE_URL', 'https://open.bigmodel.cn/api/paas/v4')
             zhipu_model = os.environ.get('ZHIPU_MODEL', 'glm-4-plus')
 
-            if zhipu_key:
+            if zhipu_key and provider != 'siliconflow':
                 self._client = OpenAI(api_key=zhipu_key, base_url=zhipu_base)
                 self._provider = 'zhipu'
                 self._model = zhipu_model
-                logger.info(f"LLM initialized: zhipu ({zhipu_model})")
+                logger.info(f"[LLM] Using Zhipu AI OpenAI-compatible API: {zhipu_model}")
                 return self._client, self._provider
 
             # Try SiliconFlow
@@ -175,17 +197,17 @@ class AAChatService:
                 self._client = OpenAI(api_key=sf_key, base_url=sf_base)
                 self._provider = 'siliconflow'
                 self._model = sf_model
-                logger.info(f"LLM initialized: siliconflow ({sf_model})")
+                logger.info(f"[LLM] Using SiliconFlow: {sf_model}")
                 return self._client, self._provider
 
-            logger.warning("No LLM API key found, using mock")
+            logger.warning("[LLM] No API key found, using mock mode")
             return None, 'mock'
 
-        except ImportError:
-            logger.warning("OpenAI package not available, using mock LLM")
+        except ImportError as e:
+            logger.warning(f"[LLM] Required package not available ({e}), using mock mode")
             return None, 'mock'
         except Exception as e:
-            logger.error(f"Failed to initialize LLM: {e}")
+            logger.error(f"[LLM] Failed to initialize: {e}")
             return None, 'error'
 
     def _build_messages(
@@ -323,14 +345,27 @@ class AAChatService:
         messages = self._build_messages(conversation_history, user_message, attachments)
 
         try:
-            # Call LLM using OpenAI-compatible API
-            response = client.chat.completions.create(
-                model=self._model,
-                messages=messages,
-                temperature=0.7,
-                max_tokens=2000,
-            )
-            response_text = response.choices[0].message.content or ''
+            # Call LLM - different APIs for different providers
+            if provider == 'zhipu-anthropic':
+                # Anthropic API
+                system_message = messages[0]['content'] if messages and messages[0]['role'] == 'system' else ''
+                api_messages = [m for m in messages if m['role'] != 'system']
+                response = client.messages.create(
+                    model=self._model,
+                    system=system_message,
+                    messages=api_messages,
+                    max_tokens=2000,
+                )
+                response_text = response.content[0].text if response.content else ''
+            else:
+                # OpenAI-compatible API
+                response = client.chat.completions.create(
+                    model=self._model,
+                    messages=messages,
+                    temperature=0.7,
+                    max_tokens=2000,
+                )
+                response_text = response.choices[0].message.content or ''
 
             return self._parse_response(response_text)
 
@@ -384,14 +419,27 @@ class AAChatService:
         messages = self._build_messages(conversation_history, user_message, attachments)
 
         try:
-            # Stream response using OpenAI-compatible API
-            stream = client.chat.completions.create(
-                model=self._model,
-                messages=messages,
-                temperature=0.7,
-                max_tokens=2000,
-                stream=True,
-            )
+            # Stream response - different APIs for different providers
+            if provider == 'zhipu-anthropic':
+                # Anthropic API: system message is separate
+                system_message = messages[0]['content'] if messages and messages[0]['role'] == 'system' else ''
+                api_messages = [m for m in messages if m['role'] != 'system']
+                stream = client.messages.create(
+                    model=self._model,
+                    system=system_message,
+                    messages=api_messages,
+                    max_tokens=2000,
+                    stream=True,
+                )
+            else:
+                # OpenAI-compatible API
+                stream = client.chat.completions.create(
+                    model=self._model,
+                    messages=messages,
+                    temperature=0.7,
+                    max_tokens=2000,
+                    stream=True,
+                )
 
             full_response = ""
             json_block_started = False
@@ -474,9 +522,21 @@ class AAChatService:
 
                 return events
 
-            for chunk in stream:
-                if chunk.choices and chunk.choices[0].delta.content:
-                    token = chunk.choices[0].delta.content
+            # Process stream - handle different API formats
+            for event in stream:
+                # Extract token based on provider
+                token = None
+                if provider == 'zhipu-anthropic':
+                    # Anthropic stream format
+                    if hasattr(event, 'type'):
+                        if event.type == 'content_block_delta' and hasattr(event.delta, 'text'):
+                            token = event.delta.text
+                else:
+                    # OpenAI stream format
+                    if hasattr(event, 'choices') and event.choices and event.choices[0].delta.content:
+                        token = event.choices[0].delta.content
+
+                if token:
                     full_response += token
                     yield {'type': 'token', 'content': token}
 

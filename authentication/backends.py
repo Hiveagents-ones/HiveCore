@@ -131,3 +131,46 @@ class JWTAuthenticationWithTenant(BaseAuthentication):
     def authenticate_header(self, request):
         """Return string for WWW-Authenticate header."""
         return 'Bearer'
+
+
+class QueryParamJWTAuthentication(BaseAuthentication):
+    """JWT authentication via query parameter.
+
+    Supports token passed as ?token=xxx query parameter.
+    Useful for SSE/EventSource which doesn't support custom headers.
+    """
+
+    def authenticate(self, request):
+        """Authenticate using JWT from query param."""
+        token = request.query_params.get('token')
+        if not token:
+            return None
+
+        try:
+            from rest_framework_simplejwt.tokens import AccessToken
+            from django.contrib.auth import get_user_model
+        except ImportError:
+            return None
+
+        try:
+            # Validate and decode the token
+            access_token = AccessToken(token)
+            user_id = access_token.get('user_id')
+
+            User = get_user_model()
+            user = User.objects.get(pk=user_id)
+
+            # Attach tenant
+            try:
+                tenant_profile = user.tenant_profile
+                request.tenant = tenant_profile.tenant
+            except TenantUser.DoesNotExist:
+                request.tenant = None
+
+            return (user, access_token)
+        except Exception:
+            return None
+
+    def authenticate_header(self, request):
+        """Return string for WWW-Authenticate header."""
+        return 'Bearer'

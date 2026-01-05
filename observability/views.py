@@ -40,6 +40,7 @@ from .serializers import (
     UsageRecordSerializer, UsageRecordIngestSerializer,
     ExecutionRecordSerializer, ExecutionRecordIngestSerializer,
     TimelineEventSerializer, TimelineEventIngestSerializer,
+    ExecutionLogIngestSerializer,
 )
 
 
@@ -591,6 +592,167 @@ class IngestAgentSelectionView(APIView):
             'selected_agent': selected.get('agent_name') if selected else None,
             'candidate_count': len(data['candidates']),
         })
+
+        return Response({
+            'status': 'ok',
+            'created': len(created_ids),
+            'ids': created_ids,
+        }, status=status.HTTP_201_CREATED)
+
+    def _publish_sse(self, tenant, event_type, data):
+        try:
+            import redis
+            redis_url = getattr(settings, 'REDIS_URL', None)
+            if redis_url:
+                r = redis.from_url(redis_url)
+                r.publish(f"sse:{tenant.id}", json.dumps({
+                    'type': event_type,
+                    'data': data
+                }))
+        except Exception:
+            pass
+
+
+class IngestExecutionLogView(APIView):
+    """Ingest execution log from agentscope.
+
+    POST /api/v1/observability/ingest/log/
+
+    Headers:
+        X-API-Key: hc_xxxxx
+
+    Body:
+        {
+            "execution_round_id": "uuid-string",
+            "level": "info",  // debug, info, warning, error
+            "message": "Agent started processing requirement",
+            "metadata": {"key": "value"},  // optional
+            "agent_name": "Strategy Agent",  // optional
+            "source": "agentscope.ones.aa_agent",  // optional
+            "timestamp": "2024-01-01T00:00:00Z"  // optional, defaults to now
+        }
+
+    Also supports batch ingestion:
+        {
+            "execution_round_id": "uuid-string",
+            "logs": [
+                {"level": "info", "message": "...", ...},
+                {"level": "debug", "message": "...", ...}
+            ]
+        }
+    """
+
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        from api.models import Agent
+        from execution.models import ExecutionRound, ExecutionLog
+
+        tenant = getattr(request, 'tenant', None)
+        if not tenant:
+            return Response(
+                {'error': 'Invalid or missing API key'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
+        data = request.data
+
+        # Handle batch ingestion
+        if 'logs' in data:
+            return self._handle_batch(request, tenant, data)
+
+        # Single log ingestion
+        serializer = ExecutionLogIngestSerializer(data=data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        validated = serializer.validated_data
+
+        # Get execution round
+        try:
+            execution_round = ExecutionRound.objects.get(id=validated['execution_round_id'])
+        except ExecutionRound.DoesNotExist:
+            return Response(
+                {'error': f'ExecutionRound {validated["execution_round_id"]} not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # Resolve agent if name provided
+        agent = None
+        agent_name = validated.get('agent_name', '')
+        if agent_name:
+            agent = Agent.objects.filter(name=agent_name).first()
+
+        # Create log entry
+        log = ExecutionLog.objects.create(
+            tenant=tenant,
+            execution_round=execution_round,
+            level=validated['level'],
+            message=validated['message'],
+            metadata=validated.get('metadata', {}),
+            agent=agent,
+            source=validated.get('source', ''),
+            timestamp=validated.get('timestamp') or timezone.now(),
+        )
+
+        # Publish SSE event for warnings and errors
+        if validated['level'] in ('warning', 'error'):
+            self._publish_sse(tenant, 'log', {
+                'execution_round_id': str(execution_round.id),
+                'level': log.level,
+                'message': log.message[:200],  # Truncate for SSE
+                'agent_name': agent_name,
+            })
+
+        return Response({'status': 'ok', 'id': str(log.id)}, status=status.HTTP_201_CREATED)
+
+    def _handle_batch(self, request, tenant, data):
+        """Handle batch log ingestion."""
+        from api.models import Agent
+        from execution.models import ExecutionRound, ExecutionLog
+
+        execution_round_id = data.get('execution_round_id')
+        logs = data.get('logs', [])
+
+        if not execution_round_id:
+            return Response(
+                {'error': 'Missing required field: execution_round_id'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Get execution round
+        try:
+            execution_round = ExecutionRound.objects.get(id=execution_round_id)
+        except ExecutionRound.DoesNotExist:
+            return Response(
+                {'error': f'ExecutionRound {execution_round_id} not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # Cache agent lookups
+        agent_cache = {}
+        created_ids = []
+
+        for log_data in logs:
+            # Resolve agent
+            agent = None
+            agent_name = log_data.get('agent_name', '')
+            if agent_name:
+                if agent_name not in agent_cache:
+                    agent_cache[agent_name] = Agent.objects.filter(name=agent_name).first()
+                agent = agent_cache[agent_name]
+
+            log = ExecutionLog.objects.create(
+                tenant=tenant,
+                execution_round=execution_round,
+                level=log_data.get('level', 'info'),
+                message=log_data.get('message', ''),
+                metadata=log_data.get('metadata', {}),
+                agent=agent,
+                source=log_data.get('source', ''),
+                timestamp=log_data.get('timestamp') or timezone.now(),
+            )
+            created_ids.append(str(log.id))
 
         return Response({
             'status': 'ok',

@@ -1,6 +1,11 @@
 # -*- coding: utf-8 -*-
 """Celery configuration for HiveCore backend."""
+# Gevent monkey patching - MUST be before any other imports
 import os
+if os.environ.get('CELERY_WORKER_POOL') == 'gevent':
+    from gevent import monkey
+    monkey.patch_all()
+
 from celery import Celery
 
 # Set the default Django settings module

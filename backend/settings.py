@@ -342,6 +342,13 @@ CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = TIME_ZONE
 CELERY_TASK_TRACK_STARTED = True
 CELERY_TASK_TIME_LIMIT = 3600  # 1 hour max per task
+CELERY_TASK_DEFAULT_QUEUE = 'default'  # Use 'default' instead of 'celery'
+
+# Redis SSL configuration for AWS ElastiCache
+if REDIS_URL and REDIS_URL.startswith('rediss://'):
+    import ssl
+    CELERY_BROKER_USE_SSL = {'ssl_cert_reqs': ssl.CERT_NONE}
+    CELERY_REDIS_BACKEND_USE_SSL = {'ssl_cert_reqs': ssl.CERT_NONE}
 
 # Execution settings
 EXECUTION_WORKSPACE_DIR = os.environ.get('EXECUTION_WORKSPACE_DIR', '/tmp/hivecore_workspaces')

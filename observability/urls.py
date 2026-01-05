@@ -24,6 +24,7 @@ urlpatterns = [
     path('ingest/decision/', views.IngestDecisionView.as_view(), name='ingest-decision'),
     path('ingest/file-registry/', views.IngestFileRegistryView.as_view(), name='ingest-file-registry'),
     path('ingest/agent-selection/', views.IngestAgentSelectionView.as_view(), name='ingest-agent-selection'),
+    path('ingest/log/', views.IngestExecutionLogView.as_view(), name='ingest-log'),
 
     # Project stats
     path('project/<str:project_id>/stats/', views.ProjectStatsView.as_view(), name='project-stats'),

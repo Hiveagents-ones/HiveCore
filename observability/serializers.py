@@ -118,3 +118,21 @@ class ProjectStatsSerializer(serializers.Serializer):
     usage = serializers.DictField()
     executions = serializers.DictField()
     active_agents = serializers.ListField()
+
+
+class ExecutionLogIngestSerializer(serializers.Serializer):
+    """Serializer for ingesting execution logs from agentscope.
+
+    Used by AgentScope to push detailed execution logs to Django.
+    """
+
+    execution_round_id = serializers.UUIDField()
+    level = serializers.ChoiceField(
+        choices=['debug', 'info', 'warning', 'error'],
+        default='info'
+    )
+    message = serializers.CharField()
+    metadata = serializers.DictField(default=dict, required=False)
+    agent_name = serializers.CharField(max_length=100, allow_blank=True, default='')
+    source = serializers.CharField(max_length=100, allow_blank=True, default='')
+    timestamp = serializers.DateTimeField(required=False)

@@ -64,6 +64,9 @@ class ProjectTenantQuerySetMixin:
     For models that have a 'project' ForeignKey field, this mixin
     filters the queryset by the project's tenant.
 
+    Also includes records where project is NULL (for resources not yet
+    assigned to a project).
+
     Usage::
 
         class TaskViewSet(ProjectTenantQuerySetMixin, viewsets.ModelViewSet):
@@ -75,10 +78,18 @@ class ProjectTenantQuerySetMixin:
     project_field_name = 'project'
 
     def get_queryset(self):
-        """Filter queryset by project's tenant."""
+        """Filter queryset by project's tenant.
+
+        Includes records where:
+        1. project.tenant matches request tenant, OR
+        2. project is NULL (not yet assigned)
+        """
+        from django.db.models import Q
+
         qs = super().get_queryset()
         tenant = getattr(self.request, 'tenant', None)
         if tenant:
             filter_kwargs = {f'{self.project_field_name}__tenant': tenant}
-            return qs.filter(**filter_kwargs)
+            null_project_kwargs = {f'{self.project_field_name}__isnull': True}
+            return qs.filter(Q(**filter_kwargs) | Q(**null_project_kwargs))
         return qs.none()

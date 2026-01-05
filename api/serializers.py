@@ -154,11 +154,15 @@ class TeamMemberSerializer(serializers.ModelSerializer):
     agent_id = serializers.PrimaryKeyRelatedField(
         queryset=Agent.objects.all(), source="agent", write_only=True
     )
+    project_id = serializers.PrimaryKeyRelatedField(
+        queryset=Project.objects.all(), source="project", write_only=True
+    )
 
     class Meta:
         model = TeamMember
         fields = [
             "id",
+            "project_id",
             "agent",
             "agent_id",
             "role",

@@ -174,11 +174,11 @@ def execute_single_requirement_sync(
 
         try:
             from agentscope.scripts._llm_utils import initialize_llm
-            from agentscope.scripts._runtime import build_runtime_harness
             from agentscope.scripts._execution import run_single_requirement
 
             # Initialize LLM
             llm, provider = initialize_llm('auto')
+            logger.info(f"[{req_id}] LLM initialized: {provider}")
 
             # Setup workspace
             project_id = str(execution_round.project_id) if execution_round.project_id else 'default'
@@ -202,25 +202,49 @@ def execute_single_requirement_sync(
                     'id': req_id,
                     'content': requirement_execution.requirement_content,
                     'type': requirement_execution.requirement_type,
-                    'acceptance': [],
+                    'acceptance': requirement_execution.qa_result.get('acceptance', []) if requirement_execution.qa_result else [],
                 }
 
-            # Build minimal runtime for single requirement
-            runtime = build_runtime_harness(
-                spec,
-                user_id=f"api-{str(execution_round.id)[:8]}",
-                project_hint=project_id,
-                llm=llm,
-                workspace_dir=str(workspace_dir),
-            )
+            # Get previous state for retry rounds
+            inner_round = requirement_execution.inner_round_number
+            feedback = ""
+            passed_ids: set = set()
+            prev_blueprint = None
+
+            if inner_round > 1:
+                # Get previous attempt's results for feedback
+                prev_qa = requirement_execution.qa_result
+                if prev_qa and prev_qa.get('details'):
+                    # Collect feedback from failed criteria
+                    failed_reasons = []
+                    for item in prev_qa.get('details', []):
+                        if not item.get('pass') and item.get('reason'):
+                            failed_reasons.append(f"- {item.get('name', 'Criterion')}: {item.get('reason')}")
+                    if failed_reasons:
+                        feedback = "Previous QA feedback:\n" + "\n".join(failed_reasons)
+
+                    # Collect passed IDs
+                    passed_ids = {item.get('id') for item in prev_qa.get('details', []) if item.get('pass') and item.get('id')}
+
+                prev_blueprint = requirement_execution.blueprint
+
+            logger.info(f"[{req_id}] Executing with inner_round={inner_round}, feedback_len={len(feedback)}")
 
             # Execute single requirement
             result = await run_single_requirement(
-                runtime=runtime,
-                requirement=req_data,
                 llm=llm,
+                spec=spec,
+                requirement=req_data,
+                workspace_dir=workspace_dir,
+                runtime_workspace=None,  # TODO: Add runtime workspace support
+                round_idx=inner_round,
+                feedback=feedback,
+                passed_ids=passed_ids,
+                prev_blueprint=prev_blueprint,
+                verbose=True,
             )
 
+            logger.info(f"[{req_id}] Execution completed: passed={result.get('passed')}, pass_ratio={result.get('pass_ratio')}")
             return result
 
         except ImportError as e:
