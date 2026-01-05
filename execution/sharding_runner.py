@@ -407,6 +407,9 @@ def _merge_file_with_agent(
     """
     Use LLM to intelligently merge conflicting file versions.
 
+    This function reuses HiveCore's smart_merge for two versions.
+    For more than 2 versions, it chains merges sequentially.
+
     Args:
         file_path: Relative file path
         sources: List of source versions, each with req_id and content
@@ -415,73 +418,48 @@ def _merge_file_with_agent(
     Returns:
         Merged file content
     """
-    # Build context about each version
-    versions_context = []
-    for i, src in enumerate(sources):
-        req_id = src["req_id"]
-        content = src["content"]
-
-        # Find requirement info from spec
-        req_info = None
-        for req in spec.get("requirements", []):
-            if req.get("id") == req_id:
-                req_info = req
-                break
-
-        req_desc = req_info.get("content", "") if req_info else f"Requirement {req_id}"
-
-        versions_context.append(f"""
-=== Version {i+1} (from {req_id}) ===
-Requirement: {req_desc}
-
-```
-{content}
-```
-""")
-
-    prompt = f"""You are a code merge expert. Multiple requirements have generated different versions of the same file.
-Your task is to intelligently merge these versions into a single coherent file.
-
-File: {file_path}
-
-{chr(10).join(versions_context)}
-
-Instructions:
-1. Analyze each version to understand what each requirement needs
-2. Merge the versions so that ALL requirements are satisfied
-3. Resolve any conflicts intelligently (don't just pick one version)
-4. Ensure the merged code is syntactically correct and functional
-5. Keep all necessary imports, functions, and features from each version
-
-Output ONLY the merged file content, no explanations or markdown code blocks.
-"""
+    if len(sources) < 2:
+        return sources[0]["content"] if sources else ""
 
     try:
+        from agentscope.scripts._multi_agent import smart_merge
         from agentscope.scripts._llm_utils import initialize_llm
 
-        async def _call_llm():
+        async def _do_merge():
             llm, _ = initialize_llm('auto')
-            response = await llm.async_call(prompt)
-            return response.text if hasattr(response, 'text') else str(response)
 
-        merged_content = _run_async_in_thread(_call_llm())
+            # Start with first version as base
+            merged = sources[0]["content"]
 
-        # Clean up response (remove potential markdown code blocks)
-        if merged_content.startswith("```"):
-            lines = merged_content.split("\n")
-            # Remove first line (```language) and last line (```)
-            if lines[-1].strip() == "```":
-                lines = lines[1:-1]
-            elif lines[0].startswith("```"):
-                lines = lines[1:]
-            merged_content = "\n".join(lines)
+            # Merge each subsequent version into the result
+            for i in range(1, len(sources)):
+                head_content = sources[i]["content"]
+                req_id = sources[i]["req_id"]
 
-        logger.info(f"[Merge] Agent merged {file_path} from {len(sources)} versions")
-        return merged_content
+                merged_result, success = await smart_merge(
+                    base_content=merged,
+                    head_content=head_content,
+                    file_path=file_path,
+                    llm=llm,
+                )
 
+                if success:
+                    merged = merged_result
+                    logger.info(f"[Merge] smart_merge succeeded for {file_path} (merged {req_id})")
+                else:
+                    # Fallback: prefer the newer version (has more complete changes)
+                    logger.warning(f"[Merge] smart_merge failed for {file_path}, using {req_id} version")
+                    merged = head_content
+
+            return merged
+
+        return _run_async_in_thread(_do_merge())
+
+    except ImportError as e:
+        logger.warning(f"[Merge] smart_merge not available: {e}, using last version")
+        return sources[-1]["content"]
     except Exception as e:
         logger.error(f"[Merge] Agent merge failed for {file_path}: {e}")
-        # Fallback: use the last version (dependency order means last is most complete)
         return sources[-1]["content"]
 
 
