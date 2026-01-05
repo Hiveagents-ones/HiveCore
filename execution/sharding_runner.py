@@ -172,6 +172,8 @@ def execute_single_requirement_sync(
     async def _execute():
         os.environ["DJANGO_ALLOW_ASYNC_UNSAFE"] = "true"
 
+        runtime_workspace = None
+
         try:
             from agentscope.scripts._llm_utils import initialize_llm
             from agentscope.scripts._execution import run_single_requirement
@@ -180,35 +182,63 @@ def execute_single_requirement_sync(
             llm, provider = initialize_llm('auto')
             logger.info(f"[{req_id}] LLM initialized: {provider}")
 
-            # Setup workspace with two-level isolation: requirement + agent
-            # This prevents conflicts during parallel execution
-            project_id = str(execution_round.project_id) if execution_round.project_id else 'default'
-            workspace_base = Path(getattr(settings, 'EXECUTION_WORKSPACE_DIR', '/tmp/hivecore_workspaces'))
+            # Check if runtime mode is enabled (Docker container execution)
+            use_runtime = getattr(settings, 'USE_RUNTIME_WORKSPACE', True)
 
-            # Structure:
-            # /workspaces/{project_id}/
-            #   ├── working/                    # Final merged code (all requirements)
-            #   └── requirements/
-            #       ├── {req_id}/
-            #       │   ├── delivery/           # Merged code from all agents for this requirement
-            #       │   └── agents/
-            #       │       ├── {agent_id}/     # Isolated workspace for each agent
-            #       │       └── ...
-            #       └── ...
+            workspace_dir = None
 
-            # For now, use a default agent ID (single agent per requirement)
-            # Future: support multiple agents per requirement
-            agent_id = requirement_execution.agent_id if hasattr(requirement_execution, 'agent_id') and requirement_execution.agent_id else 'default'
+            if use_runtime:
+                # Use Docker container for isolated execution
+                try:
+                    from agentscope.scripts._runtime_workspace import RuntimeWorkspaceWithPR
 
-            req_base = workspace_base / project_id / 'requirements' / req_id
-            agent_workspace = req_base / 'agents' / agent_id
-            agent_workspace.mkdir(parents=True, exist_ok=True)
+                    # Each requirement gets its own container
+                    runtime_workspace = RuntimeWorkspaceWithPR(
+                        base_workspace_dir="/workspace",
+                        image=getattr(settings, 'RUNTIME_DOCKER_IMAGE', 'agentscope/runtime-sandbox-filesystem:latest'),
+                        timeout=600,
+                        enable_pr_mode=True,
+                    )
 
-            # Also ensure delivery dir exists for merging
-            delivery_dir = req_base / 'delivery'
-            delivery_dir.mkdir(parents=True, exist_ok=True)
+                    # Start the container
+                    if not runtime_workspace.start():
+                        logger.warning(f"[{req_id}] Failed to start runtime workspace, falling back to local mode")
+                        runtime_workspace = None
+                    else:
+                        logger.info(f"[{req_id}] Runtime workspace started: {runtime_workspace.sandbox_id}")
 
-            workspace_dir = agent_workspace
+                except Exception as e:
+                    logger.warning(f"[{req_id}] Runtime workspace init failed: {e}, falling back to local mode")
+                    runtime_workspace = None
+
+            if not runtime_workspace:
+                # Fallback to local workspace with two-level isolation
+                project_id = str(execution_round.project_id) if execution_round.project_id else 'default'
+                workspace_base = Path(getattr(settings, 'EXECUTION_WORKSPACE_DIR', '/tmp/hivecore_workspaces'))
+
+                # Structure:
+                # /workspaces/{project_id}/
+                #   ├── working/                    # Final merged code (all requirements)
+                #   └── requirements/
+                #       ├── {req_id}/
+                #       │   ├── delivery/           # Merged code from all agents for this requirement
+                #       │   └── agents/
+                #       │       ├── {agent_id}/     # Isolated workspace for each agent
+                #       │       └── ...
+                #       └── ...
+
+                # For now, use a default agent ID (single agent per requirement)
+                agent_id = requirement_execution.agent_id if hasattr(requirement_execution, 'agent_id') and requirement_execution.agent_id else 'default'
+
+                req_base = workspace_base / project_id / 'requirements' / req_id
+                agent_workspace = req_base / 'agents' / agent_id
+                agent_workspace.mkdir(parents=True, exist_ok=True)
+
+                # Also ensure delivery dir exists for merging
+                delivery_dir = req_base / 'delivery'
+                delivery_dir.mkdir(parents=True, exist_ok=True)
+
+                workspace_dir = agent_workspace
 
             # Get parsed spec from execution round
             spec = execution_round.parsed_spec or {}
@@ -260,7 +290,7 @@ def execute_single_requirement_sync(
                 spec=spec,
                 requirement=req_data,
                 workspace_dir=workspace_dir,
-                runtime_workspace=None,  # TODO: Add runtime workspace support
+                runtime_workspace=runtime_workspace,
                 round_idx=inner_round,
                 feedback=feedback,
                 passed_ids=passed_ids,
@@ -278,6 +308,15 @@ def execute_single_requirement_sync(
         except Exception as e:
             logger.exception(f"Requirement execution failed: {e}")
             raise
+
+        finally:
+            # Clean up runtime workspace
+            if runtime_workspace:
+                try:
+                    runtime_workspace.stop()
+                    logger.info(f"[{req_id}] Runtime workspace stopped")
+                except Exception as e:
+                    logger.warning(f"[{req_id}] Failed to stop runtime workspace: {e}")
 
     return _run_async_in_thread(_execute())
 
