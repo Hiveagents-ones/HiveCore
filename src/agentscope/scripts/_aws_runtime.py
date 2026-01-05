@@ -136,6 +136,55 @@ class AWSRuntimeWorkspace:
         """Check if the workspace is initialized."""
         return self._started and self.task_arn is not None
 
+    async def attach(self, task_arn: str) -> bool:
+        """Attach to an existing ECS task.
+
+        Use this to reuse a container across multiple requirements within
+        the same project/execution round.
+
+        Args:
+            task_arn: ARN of the running ECS task.
+
+        Returns:
+            `bool`: True if successfully attached.
+        """
+        try:
+            # Verify task is running
+            response = self.ecs_client.describe_tasks(
+                cluster=self.cluster_name,
+                tasks=[task_arn],
+            )
+
+            if not response.get("tasks"):
+                logger.error(f"[AWSRuntime] Task not found: {task_arn}")
+                return False
+
+            task = response["tasks"][0]
+            status = task.get("lastStatus")
+
+            if status != "RUNNING":
+                logger.error(f"[AWSRuntime] Task not running: {status}")
+                return False
+
+            self.task_arn = task_arn
+            self._started = True
+
+            # Get container IP
+            attachments = task.get("attachments", [])
+            for att in attachments:
+                if att.get("type") == "ElasticNetworkInterface":
+                    for detail in att.get("details", []):
+                        if detail.get("name") == "privateIPv4Address":
+                            self.container_ip = detail.get("value")
+                            break
+
+            logger.info(f"[AWSRuntime] Attached to task: {task_arn}, IP: {self.container_ip}")
+            return True
+
+        except Exception as e:
+            logger.error(f"[AWSRuntime] Error attaching to task: {e}")
+            return False
+
     async def start(self) -> bool:
         """Start the ECS task for code execution.
 
