@@ -1,0 +1,45 @@
+{
+  "id": "agent-Jf4vpA",
+  "name": "Specialist Agent",
+  "version": "1.0.0",
+  "profile": {
+    "skills": [
+      "ui",
+      "frontend",
+      "design"
+    ],
+    "tools": [],
+    "domains": [
+      "frontend",
+      "design"
+    ],
+    "languages": [
+      "en",
+      "zh"
+    ]
+  },
+  "mcp_servers": {},
+  "builtin_tools": [],
+  "factory": null,
+  "description": "Specialist Agent: ui, frontend, design",
+  "metadata": {
+    "source": "modular_agent_factory",
+    "created_at": "2025-12-30T10:17:46.506576+00:00",
+    "utterance": "{\n  \"initial_requirement\": \"我要一个展示新品发布的单页网站\",\n  \"summary\": \"构建一个响应式的新品发布单页网站（Landing Page），用于展示产品核心特性、视觉素材及引导用户注册或购买。\",\n  \"requirements\": [\n    {\n      \"id\": \"REQ-001\",\n      \"title\": \"UI/UX 视觉设计与交互原型\",\n      \"summary\": \"设计网站的整体视觉风格（KV），包括配色方案、字体排版及高保真原型图。需包含首屏海报、特性介绍区、详情展示区及页脚的布局设计。\",\n      \"category\": \"ui\",\n      \"priority\": \"high\",\n      \"depends_on\": []\n    },\n    {\n      \"id\": \"REQ-002\",\n      \"title\": \"前端工程化环境搭建\",\n      \"summary\": \"初始化前端项目仓库，配置构建工具、代码规范及基础路由结构。\",\n      \"category\": \"frontend\",\n      \"priority\": \"high\",\n      \"depends_on\": []\n    },\n    {\n      \"id\": \"REQ-003\",\n      \"title\": \"公共组件库开发\",\n      \"summary\": \"开发通用的UI组件，如导航栏、页脚、按钮、模态框等，以支持页面复用。\",\n      \"category\": \"frontend\",\n      \"priority\": \"medium\",\n      \"depends_on\": [\n        \"REQ-001\",\n        \"REQ-002\"\n      ]\n    },\n    {\n      \"id\": \"REQ-004\",\n      \"title\": \"首屏展示区实现\",\n      \"summary\": \"实现网站首屏，包含高质量的产品主视觉图、引人注目的Slogan及主行动按钮（CTA），支持响应式布局。\",\n      \"category\": \"frontend\",\n      \"priority\": \"high\",\n      \"depends_on\": [\n        \"REQ-003\"\n      ]\n    },\n    {\n      \"id\": \"REQ-005\",\n      \"title\": \"产品特性与详情展示\",\n      \"summary\": \"开发产品核心卖点、参数规格及图文混排的详情模块，支持富文本或图片轮播展示。\",\n      \"category\": \"frontend\",\n      \"priority\": \"high\",\n      \"depends_on\": [\n        \"REQ-003\"\n      ]\n    },\n    {\n      \"id\": \"REQ-006\",\n      \"title\": \"多媒体资源适配\",\n      \"summary\": \"优化图片及视频资源的加载策略，实现懒加载和WebP格式适配，确保在移动端和桌面端的加载性能。\",\n      \"category\": \"frontend\",\n      \"priority\": \"medium\",\n      \"depends_on\": [\n        \"REQ-005\",\n        \"REQ-004\"\n      ]\n    },\n    {\n      \"id\": \"REQ-007\",\n      \"title\": \"用户行为埋点与交互反馈\",\n      \"summary\": \"实现按钮点击、滚动深度等基础交互逻辑，并添加Toast提示或过渡动画，提升用户体验。\",\n      \"category\": \"frontend\",\n      \"priority\": \"low\",\n      \"depends_on\": [\n        \"REQ-004\"\n      ]\n    },\n    {\n      \"id\": \"REQ-008\",\n      \"title\": \"SEO优化与部署配置\",\n      \"summary\": \"配置Meta标签、Open Graph协议及静态资源CDN，确保搜索引擎可抓取并配置CI/CD自动部署流程。\",\n      \"category\": \"other\",\n      \"priority\": \"medium\",\n      \"depends_on\": [\n        \"REQ-006\"\n      ]\n    }\n  ]\n}",
+    "knowledge_count": 6,
+    "tags": [],
+    "parent_domain": null
+  },
+  "prompt_config": {
+    "system_prompt": "",
+    "role_description": "Specialist Agent",
+    "deliverable_expectation": "专注于 frontend, design 领域，运用 ui, frontend, design 技能",
+    "collaboration_guidelines": [
+      "准确理解用户需求，提供专业解答",
+      "合理使用可用工具完成任务",
+      "遇到不确定时明确指出并提供建议"
+    ],
+    "prompt_template": "",
+    "variables": {}
+  }
+}

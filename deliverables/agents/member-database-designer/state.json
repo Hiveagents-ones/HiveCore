@@ -1,0 +1,54 @@
+{
+  "agent_id": "member-database-designer",
+  "name": "会员系统数据库设计专家",
+  "memory": {
+    "context_limit": 20,
+    "short_term_limit": 50,
+    "long_term": []
+  },
+  "knowledge": {
+    "documents": [
+      {
+        "content": "基于Vue.js的健身房管理系统设计与实现\n三、需求分析\n3.1 功能需求\n系统需支持以下核心功能：\n会员管理：增删改查会员信息（如姓名、性别、兴趣爱好、手机号等），支持头像上传。\n课程预约管理：会员可预约/取消课程，系统需检测时间冲突并提示。\n健身器材管理：记录器材使用状态（正常/维修中），生成维护提醒。\n教练管理：管理教练排班信息，支持会员对教练评价。\n新闻公告发布：管理员发布健身房动态（如课程调整、活动通知）。\n3.2 非功能需求\n性能需求：支持1000+会员并发访问，关键操作响应时间≤2秒。\n安全性需求：用户数据加密存储，敏感操作需权限验证。\n可扩展性：模块化设计便于后续新增功能（如私教课程商城）。\n3.3 用户角色分析\n角色    权限说明\n管理员    全功能访问，含数据统计与分析\n会员    个人信息管理、课程预约\n教练    查看学员列表、课程安排",
+        "source": "https://blog.csdn.net/QQ375279829/article/details/154905519",
+        "metadata": {}
+      },
+      {
+        "content": "健身房管理系统\n健身房管理系统是一款旨在提升健身房管理效率和用户体验的系统，主要功能包括会员管理、课程安排和健身跟踪等。随着人们健康意识的增强，健身房作为体育锻炼的重要场所，开发此类系统具有重要的现实意义和应用价值。系统采用Java和Python作为开发语言，数据库使用MySQL，系统架构为B/S模式，后端框架包括SSM/SpringBoot和Django，前端使用Vue、ElementUI、HTML、CSS、JavaScript、jQuery和Echarts等技术。系统可通过视频、图片和代码展示其功能与实现。该系统有助于健身房管理人员更高效地管理信息，会员也能更方便地预约课程和查看健身进度，从而提升整体运营效率和用户满意度。如需源码或技术交流，可关注“计算机毕业编程指导师”主页或留言评论。",
+        "source": "https://www.bilibili.com/read/cv29204089/",
+        "metadata": {}
+      },
+      {
+        "content": "健身房会员系统需求分析与功能设计\n需求分析与功能设计\n健身房会员系统需包含会员管理、课程预约、消费记录三大核心模块。\n- 会员管理：注册/登录、个人信息维护、会员卡绑定。\n- 课程预约：课程查询、预约/取消、教练关联。\n- 消费记录：消费明细、充值记录、余额查询。\n技术选型\n- 后端：Java + Spring Boot（快速开发）、MyBatis（ORM）。\n- 数据库：MySQL 8.0（事务支持、性能优化）。\n- 前端：Thymeleaf（模板引擎）或 Vue.js（可选前后端分离）。\n数据库设计",
+        "source": "https://blog.csdn.net/douer324234x/article/details/151769200",
+        "metadata": {}
+      },
+      {
+        "content": "基于SSM（Spring+SpringMVC+MyBatis）和Vue技术栈的健身房会员管理系统的设计方案\n本系统基于SSM（Spring+SpringMVC+MyBatis）和Vue技术栈设计，实现健身房会员管理功能。后端采用Spring 5、MyBatis 3，前端使用Vue 3、Element Plus，数据库为MySQL 8.0，构建工具为Maven和npm，辅以Redis和JWT。核心功能包括会员管理、课程管理、财务模块和系统管理，涵盖会员信息CRUD、课程预约、财务报表等。数据库设计包含会员表、课程表和预约记录表。后端提供RESTful接口，前端使用Vue组件实现会员列表展示和签到功能。系统测试包括单元测试、接口测试和前端自动化测试。部署方案为后端打包成war部署到Tomcat，前端构建后部署到Nginx。源码可通过GitHub、Gitee等平台获取。系统需根据实际需求调整，建议使用Swagger和ELK进行API文档管理和日志分析。",
+        "source": "https://blog.csdn.net/2501_92691575/article/details/151049243",
+        "metadata": {}
+      },
+      {
+        "content": "基于Vue3和SpringBoot开发的健身房管理系统\n本项目基于Vue3和SpringBoot开发的健身房管理系统，旨在为健身房提供全面的管理解决方案。系统支持用户、员工、会员、教练等多种角色管理，包含员工管理、会员管理、课程管理、订单管理、反馈管理等功能模块，采用前后端分离架构，前端基于Vue3和TypeScript，后端基于SpringBoot，数据库采用MySQL，具备动态菜单、动态路由、按钮权限等核心功能。系统功能包括登录页面、首页展示、各功能模块演示等。核心技术包括Vue3与TypeScript、SpringBoot与SpringSecurity、MySQL数据库。常见问题解答涵盖验证码错误、员工新增、会员充值、课程图片上传、订单生成等。系统采用前后端分离架构，支持动态菜单、动态路由和按钮权限，为健身房提供全面的管理解决方案。",
+        "source": "https://edu.51cto.com/article/note/29743.html",
+        "metadata": {}
+      },
+      {
+        "content": "{'type': 'text', 'text': '[1] 基于Vue.js的健身房管理系统设计与实现\\n三、需求分析\\n3.1 功能需求\\n系统需支持以下核心功能：\\n会员管理：增删改查会员信息（如姓名、性别、兴趣爱好、手机号等），支持头像上传。\\n课程预约管理：会员可预约/取消课程，系统需检测时间冲突并提示。\\n健身器材管理：记录器材使用状态（正常/维修中），生成维护提醒。\\n教练管理：管理教练排班信息，支持会员对教练评价。\\n新闻公告发布：管理员发布健身房动态（如课程调整、活动通知）。\\n3.2 非功能需求\\n性能需求：支持1000+会员并发访问，关键操作响应时间≤2秒。\\n安全性需求：用户数据加密存储，敏感操作需权限验证。\\n可扩展性：模块化设计便于后续新增功能（如私教课程商城）。\\n3.3 用户角色分析\\n角色\\xa0\\xa0 \\xa0权限说明\\n管理员\\xa0\\xa0 \\xa0全功能访问，含数据统计与分析\\n会员\\xa0\\xa0 \\xa0个人信息管理、课程预约\\n教练\\xa0\\xa0 \\xa0查看学员列表、课程安排\\nhttps://blog.csdn.net/QQ375279829/article/details/154905519\\n\\n[2] 健身房管理系统\\n健身房管理系统是一款旨在提升健身房管理效率和用户体验的系统，主要功能包括会员管理、课程安排和健身跟踪等。随着人们健康意识的增强，健身房作为体育锻炼的重要场所，开发此类系统具有重要的现实意义和应用价值。系统采用Java和Python作为开发语言，数据库使用MySQL，系统架构为B/S模式，后端框架包括SSM/SpringBoot和Django，前端使用Vue、ElementUI、HTML、CSS、JavaScript、jQuery和Echarts等技术。系统可通过视频、图片和代码展示其功能与实现。该系统有助于健身房管理人员更高效地管理信息，会员也能更方便地预约课程和查看健身进度，从而提升整体运营效率和用户满意度。如需源码或技术交流，可关注“计算机毕业编程指导师”主页或留言评论。\\nhttps://www.bilibili.com/read/cv29204089/\\n\\n[3] 健身房会员系统需求分析与功能设计\\n需求分析与功能设计\\n健身房会员系统需包含会员管理、课程预约、消费记录三大核心模块。\\n- 会员管理：注册/登录、个人信息维护、会员卡绑定。\\n- 课程预约：课程查询、预约/取消、教练关联。\\n- 消费记录：消费明细、充值记录、余额查询。\\n技术选型\\n- 后端：Java + Spring Boot（快速开发）、MyBatis（ORM）。\\n- 数据库：MySQL 8.0（事务支持、性能优化）。\\n- 前端：Thymeleaf（模板引擎）或 Vue.js（可选前后端分离）。\\n数据库设计\\nhttps://blog.csdn.net/douer324234x/article/details/151769200\\n\\n[4] 基于SSM（Spring+SpringMVC+MyBatis）和Vue技术栈的健身房会员管理系统的设计方案\\n本系统基于SSM（Spring+SpringMVC+MyBatis）和Vue技术栈设计，实现健身房会员管理功能。后端采用Spring 5、MyBatis 3，前端使用Vue 3、Element Plus，数据库为MySQL 8.0，构建工具为Maven和npm，辅以Redis和JWT。核心功能包括会员管理、课程管理、财务模块和系统管理，涵盖会员信息CRUD、课程预约、财务报表等。数据库设计包含会员表、课程表和预约记录表。后端提供RESTful接口，前端使用Vue组件实现会员列表展示和签到功能。系统测试包括单元测试、接口测试和前端自动化测试。部署方案为后端打包成war部署到Tomcat，前端构建后部署到Nginx。源码可通过GitHub、Gitee等平台获取。系统需根据实际需求调整，建议使用Swagger和ELK进行API文档管理和日志分析。\\nhttps://blog.csdn.net/2501_92691575/article/details/151049243\\n\\n[5] 基于Vue3和SpringBoot开发的健身房管理系统\\n本项目基于Vue3和SpringBoot开发的健身房管理系统，旨在为健身房提供全面的管理解决方案。系统支持用户、员工、会员、教练等多种角色管理，包含员工管理、会员管理、课程管理、订单管理、反馈管理等功能模块，采用前后端分离架构，前端基于Vue3和TypeScript，后端基于SpringBoot，数据库采用MySQL，具备动态菜单、动态路由、按钮权限等核心功能。系统功能包括登录页面、首页展示、各功能模块演示等。核心技术包括Vue3与TypeScript、SpringBoot与SpringSecurity、MySQL数据库。常见问题解答涵盖验证码错误、员工新增、会员充值、课程图片上传、订单生成等。系统采用前后端分离架构，支持动态菜单、动态路由和按钮权限，为健身房提供全面的管理解决方案。\\nhttps://edu.51cto.com/article/note/29743.html'}",
+        "source": "metaso_summary",
+        "metadata": {}
+      }
+    ]
+  },
+  "task_board": {
+    "max_history": 100,
+    "current_task": null
+  },
+  "prompt": {
+    "system_prompt": "你是会员系统数据库设计专家，负责为会员管理核心API设计健壮的数据库模型，包括会员表结构、卡号绑定关联及状态流转逻辑。",
+    "role_description": "",
+    "deliverable_expectation": "",
+    "collaboration_guidelines": [],
+    "variables": {}
+  }
+}

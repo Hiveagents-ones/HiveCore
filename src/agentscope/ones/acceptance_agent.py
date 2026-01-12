@@ -1255,8 +1255,14 @@ class AcceptanceAgent:
         """
         # Prefer RuntimeWorkspace if available (same Docker sandbox)
         if self._runtime_workspace and self._runtime_workspace.is_initialized:
-            result = await self._runtime_workspace.execute_command(
-                command, working_dir=working_dir, timeout=timeout
+            # execute_command is synchronous, run in executor to avoid blocking
+            import asyncio
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(
+                None,
+                lambda: self._runtime_workspace.execute_command(
+                    command, working_dir=working_dir, timeout=timeout
+                )
             )
             return {
                 "success": result.get("success", False),

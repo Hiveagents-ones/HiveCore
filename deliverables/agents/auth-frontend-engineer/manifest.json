@@ -1,0 +1,50 @@
+{
+  "id": "auth-frontend-engineer",
+  "name": "认证与权限前端专家",
+  "version": "1.0.0",
+  "profile": {
+    "skills": [
+      "state-management",
+      "react",
+      "vue",
+      "security",
+      "frontend",
+      "routing"
+    ],
+    "tools": [],
+    "domains": [
+      "security",
+      "frontend"
+    ],
+    "languages": [
+      "zh",
+      "en"
+    ]
+  },
+  "mcp_servers": {},
+  "builtin_tools": [],
+  "factory": null,
+  "description": "专注于前端安全与权限管理，能够实现登录注册表单，处理Token存储与刷新，并配置基于角色的路由守卫（Route Guards）和动态菜单渲染。",
+  "metadata": {
+    "source": "modular_agent_factory",
+    "created_at": "2025-12-31T10:40:05.402479+00:00",
+    "utterance": "{\n  \"initial_requirement\": \"健身房会员管理系统：\\n1. 后端使用 FastAPI + SQLAlchemy + PostgreSQL\\n2. 会员管理：注册、信息维护、会员卡绑定、到期提醒\\n3. 课程管理：课程CRUD、教练排班、课程容量控制\\n4. 预约系统：会员预约课程、取消预约、预约冲突检测\\n5. 计费系统：会员卡类型(次卡/月卡/年卡)、购买、续费、消费记录\\n6. 认证授权：JWT登录、角色权限(管理员/教练/会员)\\n7. 前端使用 Vue 3 + TypeScript + Element Plus\\n8. 包含完整的单元测试和API文档\",\n  \"summary\": \"基于 FastAPI 和 Vue 3 的全栈健身房会员管理系统，涵盖会员管理、课程预约、计费授权等核心业务，支持多角色权限控制。\",\n  \"requirements\": [\n    {\n      \"id\": \"REQ-001\",\n      \"title\": \"数据库架构设计与环境搭建\",\n      \"summary\": \"设计 PostgreSQL 数据库 Schema，包括用户、会员卡、课程、预约、教练等表结构，并配置好开发环境。\",\n      \"category\": \"database\",\n      \"priority\": \"high\",\n      \"depends_on\": []\n    },\n    {\n      \"id\": \"REQ-002\",\n      \"title\": \"后端基础架构与认证模块\",\n      \"summary\": \"搭建 FastAPI 项目框架，配置 SQLAlchemy ORM，实现基于 JWT 的用户登录、注册及角色权限中间件（管理员/教练/会员）。\",\n      \"category\": \"backend\",\n      \"priority\": \"high\",\n      \"depends_on\": [\n        \"REQ-001\"\n      ]\n    },\n    {\n      \"id\": \"REQ-003\",\n      \"title\": \"会员管理 API 开发\",\n      \"summary\": \"实现会员信息的 CRUD 接口，包括会员卡绑定逻辑及基于会员卡有效期的到期提醒查询接口。\",\n      \"category\": \"api\",\n      \"priority\": \"high\",\n      \"depends_on\": [\n        \"REQ-002\"\n      ]\n    },\n    {\n      \"id\": \"REQ-004\",\n      \"title\": \"课程与教练管理 API 开发\",\n      \"summary\": \"实现课程信息的增删改查，教练排班功能，以及课程容量限制的配置接口。\",\n      \"category\": \"api\",\n      \"priority\": \"medium\",\n      \"depends_on\": [\n        \"REQ-002\"\n      ]\n    },\n    {\n      \"id\": \"REQ-005\",\n      \"title\": \"计费系统 API 开发\",\n      \"summary\": \"实现会员卡类型管理（次卡/月卡/年卡），购买续费逻辑，以及消费记录的生成与查询接口。\",\n      \"category\": \"api\",\n      \"priority\": \"high\",\n      \"depends_on\": [\n        \"REQ-003\"\n      ]\n    },\n    {\n      \"id\": \"REQ-006\",\n      \"title\": \"预约系统核心逻辑 API\",\n      \"summary\": \"开发课程预约接口，包含并发冲突检测（防止超卖）、取消预约逻辑以及自动扣减次卡/验证有效期逻辑。\",\n      \"category\": \"api\",\n      \"priority\": \"high\",\n      \"depends_on\": [\n        \"REQ-005\",\n        \"REQ-004\"\n      ]\n    },\n    {\n      \"id\": \"REQ-007\",\n      \"title\": \"后端单元测试与文档生成\",\n      \"summary\": \"编写核心业务逻辑的单元测试，并配置自动生成 OpenAPI (Swagger) 文档。\",\n      \"category\": \"backend\",\n      \"priority\": \"medium\",\n      \"depends_on\": [\n        \"REQ-006\"\n      ]\n    },\n    {\n      \"id\": \"REQ-008\",\n      \"title\": \"前端基础架构与通用组件\",\n      \"summary\": \"搭建 Vue 3 + Vite + TypeScript 项目，配置 Element Plus，实现 Axios 封装、路由守卫及全局布局组件。\",\n      \"category\": \"frontend\",\n      \"priority\": \"high\",\n      \"depends_on\": []\n    },\n    {\n      \"id\": \"REQ-009\",\n      \"title\": \"前端认证与权限管理页面\",\n      \"summary\": \"实现登录、注册页面，以及基于角色的路由动态加载和菜单渲染。\",\n      \"category\": \"frontend\",\n      \"priority\": \"high\",\n      \"depends_on\": [\n        \"REQ-008\"\n      ]\n    },\n    {\n      \"id\": \"REQ-010\",\n      \"title\": \"会员管理模块前端实现\",\n      \"summary\": \"开发会员列表、详情、编辑表单页面，集成会员卡绑定及到期状态展示。\",\n      \"category\": \"frontend\",\n      \"priority\": \"medium\",\n      \"depends_on\": [\n        \"REQ-009\"\n      ]\n    },\n    {\n      \"id\": \"REQ-011\",\n      \"title\": \"课程与排班管理模块前端实现\",\n      \"summary\": \"开发课程列表、教练排班表页面，支持可视化的时间安排和容量设置。\",\n      \"category\": \"frontend\",\n      \"priority\": \"medium\",\n      \"depends_on\": [\n        \"REQ-009\"\n      ]\n    },\n    {\n      \"id\": \"REQ-012\",\n      \"title\": \"预约与计费模块前端实现\",\n      \"summary\": \"开发会员端课程预约界面（含冲突提示）、取消功能，以及管理端的会员卡购买/续费/消费记录页面。\",\n      \"category\": \"frontend\",\n      \"priority\": \"medium\",\n      \"depends_on\": [\n        \"REQ-011\",\n        \"REQ-010\"\n      ]\n    }\n  ]\n}",
+    "knowledge_count": 6,
+    "tags": [
+      "auth-ui",
+      "dynamic-routing",
+      "role-based-access",
+      "jwt-storage",
+      "menu-permission"
+    ],
+    "parent_domain": "frontend"
+  },
+  "prompt_config": {
+    "system_prompt": "你是一个专注于前端认证与权限管理的专家。你需要实现用户登录和注册界面，管理Token的状态（存储与自动刷新），并实现前端的权限控制逻辑，包括路由守卫和根据用户角色动态渲染菜单。",
+    "role_description": "",
+    "deliverable_expectation": "",
+    "collaboration_guidelines": [],
+    "prompt_template": "",
+    "variables": {}
+  }
+}

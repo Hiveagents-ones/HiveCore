@@ -1,0 +1,51 @@
+{
+  "id": "vue3-frontend-specialist",
+  "name": "Vue3前端架构专家",
+  "version": "1.0.0",
+  "profile": {
+    "skills": [
+      "vue-router",
+      "pinia",
+      "frontend",
+      "vue",
+      "element-plus",
+      "vite",
+      "typescript"
+    ],
+    "tools": [],
+    "domains": [
+      "frontend"
+    ],
+    "languages": [
+      "en",
+      "zh"
+    ]
+  },
+  "mcp_servers": {},
+  "builtin_tools": [],
+  "factory": null,
+  "description": "专注于Vue3生态系统的基础架构搭建，精通Vite配置、TypeScript集成及Element Plus组件库的封装与状态管理（Pinia）。",
+  "metadata": {
+    "source": "modular_agent_factory",
+    "created_at": "2026-01-01T04:21:50.087029+00:00",
+    "utterance": "{\n  \"initial_requirement\": \"健身房会员管理系统：\\n1. 后端使用 FastAPI + SQLAlchemy + PostgreSQL\\n2. 会员管理：注册、信息维护、会员卡绑定、到期提醒\\n3. 课程管理：课程CRUD、教练排班、课程容量控制\\n4. 预约系统：会员预约课程、取消预约、预约冲突检测\\n5. 计费系统：会员卡类型(次卡/月卡/年卡)、购买、续费、消费记录\\n6. 认证授权：JWT登录、角色权限(管理员/教练/会员)\\n7. 前端使用 Vue 3 + TypeScript + Element Plus\\n8. 包含完整的单元测试和API文档\",\n  \"summary\": \"基于 FastAPI 和 Vue 3 的全栈健身房会员管理系统，涵盖会员管理、课程预约、计费授权等核心业务流程。\",\n  \"requirements\": [\n    {\n      \"id\": \"REQ-001\",\n      \"title\": \"数据库架构设计与环境搭建\",\n      \"summary\": \"设计 PostgreSQL 数据库 Schema，包括用户、会员卡、课程、预约、教练等表结构，并配置开发环境。\",\n      \"category\": \"database\",\n      \"priority\": \"high\",\n      \"depends_on\": []\n    },\n    {\n      \"id\": \"REQ-002\",\n      \"title\": \"后端基础架构与认证模块\",\n      \"summary\": \"搭建 FastAPI 项目框架，配置 SQLAlchemy，实现基于 JWT 的用户登录、注册及角色权限控制（RBAC）。\",\n      \"category\": \"backend\",\n      \"priority\": \"high\",\n      \"depends_on\": [\n        \"REQ-001\"\n      ]\n    },\n    {\n      \"id\": \"REQ-003\",\n      \"title\": \"会员管理核心 API\",\n      \"summary\": \"实现会员信息的 CRUD、会员卡绑定逻辑以及会员到期状态的自动检测与提醒接口。\",\n      \"category\": \"api\",\n      \"priority\": \"high\",\n      \"depends_on\": [\n        \"REQ-002\"\n      ]\n    },\n    {\n      \"id\": \"REQ-004\",\n      \"title\": \"计费系统核心 API\",\n      \"summary\": \"实现会员卡类型配置（次卡/月卡/年卡）、购买、续费逻辑及消费记录的生成与查询接口。\",\n      \"category\": \"api\",\n      \"priority\": \"high\",\n      \"depends_on\": [\n        \"REQ-003\"\n      ]\n    },\n    {\n      \"id\": \"REQ-005\",\n      \"title\": \"课程与教练管理 API\",\n      \"summary\": \"实现课程信息的 CRUD、教练排班管理以及课程容量限制的配置接口。\",\n      \"category\": \"api\",\n      \"priority\": \"medium\",\n      \"depends_on\": [\n        \"REQ-002\"\n      ]\n    },\n    {\n      \"id\": \"REQ-006\",\n      \"title\": \"预约系统核心逻辑 API\",\n      \"summary\": \"实现会员预约课程、取消预约功能，包含预约冲突检测（时间/容量冲突）及事务回滚机制。\",\n      \"category\": \"api\",\n      \"priority\": \"high\",\n      \"depends_on\": [\n        \"REQ-004\",\n        \"REQ-005\"\n      ]\n    },\n    {\n      \"id\": \"REQ-007\",\n      \"title\": \"后端单元测试与文档生成\",\n      \"summary\": \"编写核心业务逻辑的单元测试，并集成 Swagger/OpenAPI 自动生成 API 文档。\",\n      \"category\": \"backend\",\n      \"priority\": \"medium\",\n      \"depends_on\": [\n        \"REQ-006\"\n      ]\n    },\n    {\n      \"id\": \"REQ-008\",\n      \"title\": \"前端基础架构与通用组件\",\n      \"summary\": \"搭建 Vue 3 + Vite + TypeScript 项目，配置 Element Plus，实现路由守卫、全局状态管理及通用布局组件。\",\n      \"category\": \"frontend\",\n      \"priority\": \"high\",\n      \"depends_on\": []\n    },\n    {\n      \"id\": \"REQ-009\",\n      \"title\": \"认证与权限管理前端实现\",\n      \"summary\": \"实现登录/注册页面、JWT Token 存储与刷新、以及基于角色的菜单权限控制。\",\n      \"category\": \"frontend\",\n      \"priority\": \"high\",\n      \"depends_on\": [\n        \"REQ-008\"\n      ]\n    },\n    {\n      \"id\": \"REQ-010\",\n      \"title\": \"会员与计费管理前端界面\",\n      \"summary\": \"实现会员列表、详情页、会员卡购买/续费弹窗及消费记录展示。\",\n      \"category\": \"ui\",\n      \"priority\": \"medium\",\n      \"depends_on\": [\n        \"REQ-009\"\n      ]\n    },\n    {\n      \"id\": \"REQ-011\",\n      \"title\": \"课程管理与排班前端界面\",\n      \"summary\": \"实现课程列表管理页、教练排班日历组件及课程容量设置界面。\",\n      \"category\": \"ui\",\n      \"priority\": \"medium\",\n      \"depends_on\": [\n        \"REQ-009\"\n      ]\n    },\n    {\n      \"id\": \"REQ-012\",\n      \"title\": \"预约系统前端交互实现\",\n      \"summary\": \"实现课程预约日历视图、预约确认弹窗、冲突提示及取消预约功能。\",\n      \"category\": \"frontend\",\n      \"priority\": \"high\",\n      \"depends_on\": [\n        \"REQ-010\",\n        \"REQ-011\"\n      ]\n    }\n  ]\n}",
+    "knowledge_count": 6,
+    "tags": [
+      "vue3",
+      "vite",
+      "typescript",
+      "element-plus",
+      "scaffold",
+      "layout"
+    ],
+    "parent_domain": "frontend"
+  },
+  "prompt_config": {
+    "system_prompt": "你是一位精通Vue3生态的前端架构专家。你需要负责初始化项目结构，配置Vite构建工具，集成TypeScript，封装Element Plus组件，并实现基于Vue Router的路由守卫和Pinia的全局状态管理。",
+    "role_description": "",
+    "deliverable_expectation": "",
+    "collaboration_guidelines": [],
+    "prompt_template": "",
+    "variables": {}
+  }
+}

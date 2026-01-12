@@ -1,0 +1,51 @@
+{
+  "id": "system-architect",
+  "name": "系统架构设计专家",
+  "version": "1.0.0",
+  "profile": {
+    "skills": [
+      "design",
+      "architecture",
+      "security",
+      "system-design",
+      "database",
+      "database-modeling"
+    ],
+    "tools": [],
+    "domains": [
+      "design",
+      "specialist",
+      "architecture"
+    ],
+    "languages": [
+      "zh",
+      "en"
+    ]
+  },
+  "mcp_servers": {},
+  "builtin_tools": [],
+  "factory": null,
+  "description": "专注于系统整体架构设计，负责数据库建模规范、外键策略制定及多业务域（会员、课程、权限）的模块解耦与集成设计。",
+  "metadata": {
+    "source": "modular_agent_factory",
+    "created_at": "2025-12-31T01:15:34.697837+00:00",
+    "utterance": "{\n  \"initial_requirement\": \"健身房会员管理系统\",\n  \"summary\": \"一套面向健身房运营的数字化管理系统，旨在实现会员全生命周期管理、课程预约自动化及财务报表可视化，提升运营效率。\",\n  \"requirements\": [\n    {\n      \"id\": \"REQ-001\",\n      \"title\": \"数据库架构设计\",\n      \"summary\": \"设计系统数据库Schema，包括会员表、会员卡表、课程表、预约记录表、教练表及员工权限表，并确立外键关系与索引策略。\",\n      \"category\": \"database\",\n      \"priority\": \"high\",\n      \"depends_on\": []\n    },\n    {\n      \"id\": \"REQ-002\",\n      \"title\": \"后端基础架构与认证服务\",\n      \"summary\": \"搭建后端项目框架，实现基于JWT（JSON Web Token）的用户登录、注册、密码加密及身份验证中间件。\",\n      \"category\": \"backend\",\n      \"priority\": \"high\",\n      \"depends_on\": [\n        \"REQ-001\"\n      ]\n    },\n    {\n      \"id\": \"REQ-003\",\n      \"title\": \"会员管理API\",\n      \"summary\": \"实现会员信息的增删改查接口，支持按姓名、手机号、会员状态进行筛选，包含会员头像上传与基础信息修改功能。\",\n      \"category\": \"api\",\n      \"priority\": \"high\",\n      \"depends_on\": [\n        \"REQ-002\"\n      ]\n    },\n    {\n      \"id\": \"REQ-004\",\n      \"title\": \"会员卡与计费系统API\",\n      \"summary\": \"开发会员卡类型管理（期限卡/次卡）、购卡、续费、余额变动记录及到期自动结算逻辑接口。\",\n      \"category\": \"backend\",\n      \"priority\": \"high\",\n      \"depends_on\": [\n        \"REQ-003\"\n      ]\n    },\n    {\n      \"id\": \"REQ-005\",\n      \"title\": \"课程与教练管理API\",\n      \"summary\": \"实现课程排期管理、教练信息维护及课程容量限制逻辑的API接口。\",\n      \"category\": \"api\",\n      \"priority\": \"medium\",\n      \"depends_on\": [\n        \"REQ-002\"\n      ]\n    },\n    {\n      \"id\": \"REQ-006\",\n      \"title\": \"课程预约系统API\",\n      \"summary\": \"开发会员预约课程、取消预约、预约冲突检测（如时间重叠、名额已满）及签到核销功能接口。\",\n      \"category\": \"backend\",\n      \"priority\": \"medium\",\n      \"depends_on\": [\n        \"REQ-005\",\n        \"REQ-004\"\n      ]\n    },\n    {\n      \"id\": \"REQ-007\",\n      \"title\": \"UI/UX 设计规范与原型\",\n      \"summary\": \"确定系统整体视觉风格（配色、字体），绘制登录页、会员列表页、课程排期表及数据看板的高保真原型图。\",\n      \"category\": \"ui\",\n      \"priority\": \"medium\",\n      \"depends_on\": []\n    },\n    {\n      \"id\": \"REQ-008\",\n      \"title\": \"前端基础框架与通用组件\",\n      \"summary\": \"搭建前端项目架构，实现响应式布局，封装通用组件（表格表单、弹窗、加载动画、通知提示）及路由守卫。\",\n      \"category\": \"frontend\",\n      \"priority\": \"high\",\n      \"depends_on\": [\n        \"REQ-007\"\n      ]\n    },\n    {\n      \"id\": \"REQ-009\",\n      \"title\": \"会员管理前端模块\",\n      \"summary\": \"实现会员列表展示、搜索筛选、详情查看、编辑会员信息及办理会员卡的操作界面。\",\n      \"category\": \"frontend\",\n      \"priority\": \"high\",\n      \"depends_on\": [\n        \"REQ-008\",\n        \"REQ-003\"\n      ]\n    },\n    {\n      \"id\": \"REQ-010\",\n      \"title\": \"课程预约前端模块\",\n      \"summary\": \"实现课程日历视图、课程详情展示、会员预约操作及预约状态反馈界面。\",\n      \"category\": \"frontend\",\n      \"priority\": \"medium\",\n      \"depends_on\": [\n        \"REQ-008\",\n        \"REQ-006\"\n      ]\n    },\n    {\n      \"id\": \"REQ-011\",\n      \"title\": \"数据统计看板\",\n      \"summary\": \"开发运营数据可视化大屏，展示关键指标（KPI）如新增会员数、实收金额、课消率、会员活跃度图表。\",\n      \"category\": \"frontend\",\n      \"priority\": \"low\",\n      \"depends_on\": [\n        \"REQ-009\",\n        \"REQ-010\"\n      ]\n    }\n  ]\n}",
+    "knowledge_count": 6,
+    "tags": [
+      "schema-design",
+      "mysql",
+      "postgresql",
+      "normalization",
+      "security-strategy"
+    ],
+    "parent_domain": "specialist"
+  },
+  "prompt_config": {
+    "system_prompt": "你是一位系统架构设计专家，负责设计高内聚、低耦合的数据库架构。你需要分析业务需求（会员、课程、预约），定义标准的数据库Schema，确立合理的外键关系，并制定符合安全要求的索引与权限策略。",
+    "role_description": "",
+    "deliverable_expectation": "",
+    "collaboration_guidelines": [],
+    "prompt_template": "",
+    "variables": {}
+  }
+}

@@ -21,3 +21,4 @@ name = datetime.now().strftime("%H%M%S_") + _generate_random_suffix(4)
 run_id: str = shortuuid.uuid()
 created_at: str = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
 trace_enabled: bool = False
+current_project_id: str | None = None  # Current project ID for observability tracking

@@ -1,0 +1,58 @@
+{
+  "agent_id": "agent-RfvamK",
+  "name": "Specialist Agent",
+  "memory": {
+    "context_limit": 20,
+    "short_term_limit": 50,
+    "long_term": []
+  },
+  "knowledge": {
+    "documents": [
+      {
+        "content": "AI 编程前端页面的途径与标准化步骤及 PageAdmin CMS 集成实操流程\n1、需求结构化定义\n- 明确技术栈约束：指定前端框架（如 Vue 3、React 18）、样式方案（Tailwind CSS、Less）、适配要求（响应式断点、浏览器兼容版本）\n- 功能模块拆解：按页面维度列出核心组件（如导航栏、轮播图、产品列表、表单），标注交互逻辑（如 hover 效果、表单验证、分页加载）\n- 示例提示词片段：生成一个响应式企业官网首页，技术栈：Vue 3 + Tailwind CSS，包含导航栏（支持移动端折叠）、轮播图（自动切换）、产品卡片列表（支持分页）、联系表单（含手机号验证），样式要求：主色调#2196F3，兼容Chrome 88+、Safari 15+",
+        "source": "https://developer.aliyun.com/article/1690368",
+        "metadata": {}
+      },
+      {
+        "content": "为什么互联网产品都需要一个Landing Page？\n互联网产品为何需要Landing Page？Landing Page是用户首次访问网站的页面，可能是主页、活动页或产品详情页。硅谷的Lean Startup方法论强调通过Landing Page和产品原型收集用户反馈，优化产品。Landing Page设计需清晰传达信息，实现转化。摹客提供产品原型和高保真设计，同时推荐「上线了」作为快速建站工具。该工具由海外品牌Strikingly推出，帮助无编程基础用户快速建站，已服务全球300万用户，获腾讯SaaS加速器支持。使用「上线了」建站只需三步：选模板、编辑内容、发布上线，无需代码。摹客用户可输入优惠码MOCKPLUS享受7折优惠，有效期至2020年10月26日。",
+        "source": "https://www.mockplus.cn/blog/post/1540",
+        "metadata": {}
+      },
+      {
+        "content": "前端主页面显示的关键点及实现方法\n前端主页面的关键点包括布局设计、组件化开发、状态管理、响应式设计、优化加载性能。布局设计采用CSS Grid或Flexbox实现，响应式设计通过媒体查询调整布局。组件化开发使用React、Vue等框架，提升代码模块化和可重用性。状态管理通过Redux、Vuex等工具集中管理应用状态。响应式设计利用Flexbox实现灵活布局。优化加载性能包括代码分割、图片优化和CDN加速。开发工具和框架如React、Vue、Angular提升开发效率，项目管理工具如PingCode、Worktile有助于团队协作。用户体验设计注重交互和可访问性，测试调试确保代码质量，部署维护通过CI/CD和监控工具保障稳定性。综合运用这些技术，可创建高效、美观的前端主页面。",
+        "source": "https://docs.pingcode.com/baike/2447950",
+        "metadata": {}
+      },
+      {
+        "content": "网站设计：从布局到交互的全方位考量\nc. 视觉设计：基于原型绘制 “高保真视觉稿”，确定色彩、字体、图标等视觉元素，输出设计规范文档（Design System），确保开发一致性；\nd. 交互开发：前端开发基于视觉稿实现交互效果，需与设计稿 1:1 还原（如按钮颜色、间距、动画），同时进行响应式适配与性能优化；\ne. 测试优化：上线前进行多维度测试（浏览器兼容性测试、移动端适配测试、性能测试），收集用户反馈，迭代优化（如调整按钮位置、优化加载速度）。",
+        "source": "https://bjdodo.com/contents/16/2182.html",
+        "metadata": {}
+      },
+      {
+        "content": "My Product Landing Page\n本项目是响应式Web设计练习，目标是构建一个类似CodePen.io的网页。项目包含建立致敬页面、调查表、产品登录页、技术文档页和个人投资组合页。项目参考链接为https://www.freecodecamp.org/learn/responsive-web-design/responsive-web-design-projects/build-a-product-landing-page。HTML代码包含导航栏、图片、视频和表单元素，CSS实现响应式布局，包括固定导航栏和视口适配。问题包括表单提交不熟悉和布局元素始终位于顶部，解决方案是添加表单action属性和使用fixed定位。",
+        "source": "https://blog.csdn.net/weixin_50555183/article/details/109997880",
+        "metadata": {}
+      },
+      {
+        "content": "{'type': 'text', 'text': '[1] AI 编程前端页面的途径与标准化步骤及 PageAdmin CMS 集成实操流程\\n1、需求结构化定义\\n- 明确技术栈约束：指定前端框架（如 Vue 3、React 18）、样式方案（Tailwind CSS、Less）、适配要求（响应式断点、浏览器兼容版本）\\n- 功能模块拆解：按页面维度列出核心组件（如导航栏、轮播图、产品列表、表单），标注交互逻辑（如 hover 效果、表单验证、分页加载）\\n- 示例提示词片段：生成一个响应式企业官网首页，技术栈：Vue 3 + Tailwind CSS，包含导航栏（支持移动端折叠）、轮播图（自动切换）、产品卡片列表（支持分页）、联系表单（含手机号验证），样式要求：主色调#2196F3，兼容Chrome 88+、Safari 15+\\nhttps://developer.aliyun.com/article/1690368\\n\\n[2] 为什么互联网产品都需要一个Landing Page？\\n互联网产品为何需要Landing Page？Landing Page是用户首次访问网站的页面，可能是主页、活动页或产品详情页。硅谷的Lean Startup方法论强调通过Landing Page和产品原型收集用户反馈，优化产品。Landing Page设计需清晰传达信息，实现转化。摹客提供产品原型和高保真设计，同时推荐「上线了」作为快速建站工具。该工具由海外品牌Strikingly推出，帮助无编程基础用户快速建站，已服务全球300万用户，获腾讯SaaS加速器支持。使用「上线了」建站只需三步：选模板、编辑内容、发布上线，无需代码。摹客用户可输入优惠码MOCKPLUS享受7折优惠，有效期至2020年10月26日。\\nhttps://www.mockplus.cn/blog/post/1540\\n\\n[3] 前端主页面显示的关键点及实现方法\\n前端主页面的关键点包括布局设计、组件化开发、状态管理、响应式设计、优化加载性能。布局设计采用CSS Grid或Flexbox实现，响应式设计通过媒体查询调整布局。组件化开发使用React、Vue等框架，提升代码模块化和可重用性。状态管理通过Redux、Vuex等工具集中管理应用状态。响应式设计利用Flexbox实现灵活布局。优化加载性能包括代码分割、图片优化和CDN加速。开发工具和框架如React、Vue、Angular提升开发效率，项目管理工具如PingCode、Worktile有助于团队协作。用户体验设计注重交互和可访问性，测试调试确保代码质量，部署维护通过CI/CD和监控工具保障稳定性。综合运用这些技术，可创建高效、美观的前端主页面。\\nhttps://docs.pingcode.com/baike/2447950\\n\\n[4] 网站设计：从布局到交互的全方位考量\\nc. 视觉设计：基于原型绘制 “高保真视觉稿”，确定色彩、字体、图标等视觉元素，输出设计规范文档（Design System），确保开发一致性；\\nd. 交互开发：前端开发基于视觉稿实现交互效果，需与设计稿 1:1 还原（如按钮颜色、间距、动画），同时进行响应式适配与性能优化；\\ne. 测试优化：上线前进行多维度测试（浏览器兼容性测试、移动端适配测试、性能测试），收集用户反馈，迭代优化（如调整按钮位置、优化加载速度）。\\nhttps://bjdodo.com/contents/16/2182.html\\n\\n[5] My Product Landing Page\\n本项目是响应式Web设计练习，目标是构建一个类似CodePen.io的网页。项目包含建立致敬页面、调查表、产品登录页、技术文档页和个人投资组合页。项目参考链接为https://www.freecodecamp.org/learn/responsive-web-design/responsive-web-design-projects/build-a-product-landing-page。HTML代码包含导航栏、图片、视频和表单元素，CSS实现响应式布局，包括固定导航栏和视口适配。问题包括表单提交不熟悉和布局元素始终位于顶部，解决方案是添加表单action属性和使用fixed定位。\\nhttps://blog.csdn.net/weixin_50555183/article/details/109997880'}",
+        "source": "metaso_summary",
+        "metadata": {}
+      }
+    ]
+  },
+  "task_board": {
+    "max_history": 100,
+    "current_task": null
+  },
+  "prompt": {
+    "system_prompt": "",
+    "role_description": "Specialist Agent",
+    "deliverable_expectation": "专注于 specialist 领域，运用 deployment, database, other 技能",
+    "collaboration_guidelines": [
+      "准确理解用户需求，提供专业解答",
+      "合理使用可用工具完成任务",
+      "遇到不确定时明确指出并提供建议"
+    ],
+    "variables": {}
+  }
+}

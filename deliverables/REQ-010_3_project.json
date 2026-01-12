@@ -1,0 +1,12 @@
+{
+  "success": true,
+  "summary": "累积 1 个文件 (本轮生成 52 个)",
+  "files": [
+    {
+      "path": "backend/app/main.py",
+      "content": "from fastapi import FastAPI\nfrom fastapi.middleware.cors import CORSMiddleware\n\napp = FastAPI()\n\n# CORS配置\napp.add_middleware(\n    CORSMiddleware,\n    allow_origins=[\"http://localhost:3000\"],  # 允许前端应用地址\n    allow_credentials=True,\n    allow_methods=[\"*\"],  # 允许所有HTTP方法\n    allow_headers=[\"*\"],  # 允许所有请求头\n    expose_headers=[\"*\"],  # 暴露所有响应头\n    max_age=600  # 预检请求缓存时间(秒)\n)\n\n@app.get(\"/\")\ndef read_root():\n    return {\"message\": \"Hello World\"}"
+    }
+  ],
+  "project_type": "api",
+  "mode": "agent_with_limbs"
+}

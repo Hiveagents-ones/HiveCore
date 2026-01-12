@@ -18,6 +18,34 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+logger = logging.getLogger(__name__)
+
+
+def _filter_ecs_exec_output(output: str) -> str:
+    """Filter out ECS Exec session manager messages from command output.
+
+    Args:
+        output: Raw output from ecs execute-command
+
+    Returns:
+        Filtered output with only the actual command result
+    """
+    lines = []
+    for line in output.split("\n"):
+        stripped = line.strip()
+        if not stripped:
+            continue
+        # Skip session manager messages
+        if (stripped.startswith("The Session Manager plugin") or
+            stripped.startswith("Starting session with") or
+            stripped.startswith("Exiting session with") or
+            stripped.startswith("Cannot perform start session") or
+            "SessionId:" in stripped or
+            "session with SessionId:" in stripped.lower()):
+            continue
+        lines.append(line)
+    return "\n".join(lines).strip()
+
 from agentscope.message import TextBlock
 from agentscope.tool import ToolResponse
 
@@ -26,12 +54,22 @@ logger = logging.getLogger(__name__)
 # Default Zhipu API configuration
 DEFAULT_ZHIPU_BASE_URL = "https://open.bigmodel.cn/api/anthropic"
 
-# Container execution context
+# Container execution context (Docker)
 _container_id: str | None = None
 _container_workspace: str = "/workspace"
 
+# ECS execution context (AWS Fargate)
+_ecs_task_arn: str | None = None
+_ecs_cluster: str = "hivecore-cluster"
+_ecs_region: str = "ap-northeast-1"
+_ecs_container_name: str = "sandbox"
+_ecs_mode: bool = False
+
 # Current agent context for observability
 _current_agent_id: str | None = None
+
+# Default workspace for code execution (can be set via set_default_workspace)
+_default_workspace: str | None = None
 
 
 def set_current_agent_id(agent_id: str | None) -> None:
@@ -53,6 +91,28 @@ def get_current_agent_id() -> str | None:
     return _current_agent_id
 
 
+def set_default_workspace(workspace: str | None) -> None:
+    """Set default workspace directory for Claude Code execution.
+
+    When set, all Claude Code tool calls will use this workspace by default
+    (unless explicitly overridden via the workspace parameter).
+
+    Args:
+        workspace: Path to the workspace directory, or None to clear.
+    """
+    global _default_workspace
+    _default_workspace = workspace
+
+
+def get_default_workspace() -> str | None:
+    """Get default workspace directory.
+
+    Returns:
+        Default workspace path or None.
+    """
+    return _default_workspace
+
+
 def set_container_context(
     container_id: str | None,
     container_workspace: str = "/workspace",
@@ -66,18 +126,64 @@ def set_container_context(
         container_id: Docker container ID. Set to None to disable container mode.
         container_workspace: Working directory inside container.
     """
-    global _container_id, _container_workspace
+    global _container_id, _container_workspace, _ecs_mode
     _container_id = container_id
     _container_workspace = container_workspace
+    _ecs_mode = False
 
 
-def get_container_context() -> tuple[str | None, str]:
+def set_ecs_context(
+    task_arn: str,
+    cluster: str = "hivecore-cluster",
+    region: str = "ap-northeast-1",
+    container_name: str = "sandbox",
+    workspace: str = "/workspace",
+) -> None:
+    """Set ECS Fargate context for Claude Code execution.
+
+    When ECS context is set, Claude Code CLI will be executed inside
+    the ECS container via `aws ecs execute-command` instead of on the host machine.
+
+    Args:
+        task_arn: ECS task ARN (e.g., "arn:aws:ecs:...:task/...")
+        cluster: ECS cluster name. Defaults to "hivecore-cluster".
+        region: AWS region. Defaults to "ap-northeast-1".
+        container_name: Container name in task. Defaults to "sandbox".
+        workspace: Working directory inside container.
+    """
+    global _ecs_task_arn, _ecs_cluster, _ecs_region, _ecs_container_name
+    global _container_workspace, _ecs_mode
+    _ecs_task_arn = task_arn
+    _ecs_cluster = cluster
+    _ecs_region = region
+    _ecs_container_name = container_name
+    _container_workspace = workspace
+    _ecs_mode = True
+
+
+def clear_container_context() -> None:
+    """Clear all container/Docker/ECS context."""
+    global _container_id, _container_workspace, _ecs_mode
+    global _ecs_task_arn, _ecs_cluster, _ecs_region, _ecs_container_name
+    _container_id = None
+    _container_workspace = "/workspace"
+    _ecs_task_arn = None
+    _ecs_cluster = "hivecore-cluster"
+    _ecs_region = "ap-northeast-1"
+    _ecs_container_name = "sandbox"
+    _ecs_mode = False
+
+
+def get_container_context() -> tuple[str | None, str, bool]:
     """Get current container context.
 
     Returns:
-        Tuple of (container_id, container_workspace).
+        Tuple of (container_id_or_task_arn, container_workspace, is_ecs_mode).
+        is_ecs_mode is True when using ECS Fargate, False for Docker or local.
     """
-    return _container_id, _container_workspace
+    if _ecs_mode:
+        return _ecs_task_arn, _container_workspace, True
+    return _container_id, _container_workspace, False
 
 
 async def _get_container_file_snapshot(
@@ -220,7 +326,7 @@ async def claude_code_edit(
             The result of the Claude Code execution.
     """
     # Check if we should run in container mode
-    container_id, container_workspace = get_container_context()
+    container_id, container_workspace, is_ecs_mode = get_container_context()
 
     # Use global agent_id if not provided as argument
     effective_agent_id = agent_id or get_current_agent_id()
@@ -236,7 +342,18 @@ async def claude_code_edit(
         except ImportError:
             pass  # Observability not available
 
-    if container_id:
+    if is_ecs_mode:
+        # ECS Fargate mode - execute in remote ECS container
+        constrained_prompt = _build_workspace_constraint_prompt(container_workspace) + prompt
+        return await _claude_code_edit_in_ecs(
+            prompt=constrained_prompt,
+            task_arn=container_id,  # task_arn stored in container_id
+            container_workspace=container_workspace,
+            api_key=api_key,
+            timeout=timeout,
+            on_progress=on_progress_callback,
+        )
+    elif container_id:
         # [PR-MODE] Inject workspace constraint to prevent cross-directory operations
         # This is critical for multi-agent isolation in PR mode
         constrained_prompt = _build_workspace_constraint_prompt(container_workspace) + prompt
@@ -250,11 +367,298 @@ async def claude_code_edit(
             on_progress=on_progress_callback,
         )
     else:
+        # Use global default workspace if workspace parameter is not provided
+        effective_workspace = workspace or get_default_workspace()
         return await _claude_code_edit_local(
             prompt=prompt,
-            workspace=workspace,
+            workspace=effective_workspace,
             api_key=api_key,
             timeout=timeout,
+        )
+
+
+async def _claude_code_edit_in_ecs(
+    prompt: str,
+    task_arn: str,
+    container_workspace: str,
+    api_key: str | None = None,
+    timeout: int | None = None,
+    on_progress: Any | None = None,
+) -> ToolResponse:
+    """Execute Claude Code CLI inside an ECS Fargate container.
+
+    Uses AWS ECS execute-command to run commands in the remote ECS task.
+
+    Args:
+        prompt: The editing instruction/prompt.
+        task_arn: ECS task ARN.
+        container_workspace: Working directory inside container.
+        api_key: Zhipu API key.
+        timeout: Total timeout in seconds.
+        on_progress: Optional async callback for progress updates.
+
+    Returns:
+        ToolResponse with execution result.
+    """
+    import time
+    import subprocess
+
+    # Log the start of Claude Code execution
+    prompt_preview = prompt[:100] + "..." if len(prompt) > 100 else prompt
+    logger.info(
+        "[ClaudeCode] 开始执行 (ECS task=%s, workspace=%s)",
+        task_arn.split("/")[-1],
+        container_workspace,
+    )
+    logger.info("[ClaudeCode] 任务: %s", prompt_preview)
+
+    # Get ECS context
+    global _ecs_cluster, _ecs_region, _ecs_container_name
+
+    # Enhance prompt with directory structure guidance
+    enhanced_prompt = f"""【重要 - 文件路径规范】
+当前工作目录: {container_workspace}
+这是项目的根目录，你必须在此目录下创建所有文件。
+
+**核心约束：**
+1. 使用相对路径，禁止使用绝对路径（如 /workspace/...）
+2. 不要创建额外的项目根目录（如 my-project/），当前目录就是项目根
+3. 禁止使用 ../ 向上跳转目录
+
+【任务】
+{prompt}"""
+
+    # Resolve API key
+    resolved_api_key = api_key or os.environ.get("ZHIPU_API_KEY", "")
+    logger.info("[ClaudeCode] Resolved API key: %s... (length: %d)",
+               resolved_api_key[:8] if resolved_api_key else "None",
+               len(resolved_api_key) if resolved_api_key else 0)
+    if not resolved_api_key:
+        return ToolResponse(
+            content=[TextBlock(
+                type="text",
+                text="[ERROR] No API key provided. Set ZHIPU_API_KEY in .env file.",
+            )]
+        )
+
+    # Use base64 encoding to avoid quote escaping issues
+    import base64
+    prompt_b64 = base64.b64encode(enhanced_prompt.encode("utf-8")).decode("ascii")
+
+    # Build ECS execute command
+    # Note: This uses synchronous subprocess since AWS CLI doesn't have async interface
+    # IMPORTANT: Run claude as 'node' user because --dangerously-skip-permissions
+    # cannot be used with root/sudo privileges (security restriction in Claude Code CLI)
+    # Use sudo -H to preserve environment variables for the node user
+    #
+    # Strategy: Write command to a script file first to avoid complex quoting issues
+    # Then execute the script - this is more reliable than passing complex commands
+    # via --command with nested quotes
+    escaped_command = (
+        f"echo {prompt_b64} | base64 -d > /tmp/prompt.txt && "
+        f"cd {container_workspace} && "
+        f"sudo -H -u node env "
+        f"ANTHROPIC_BASE_URL={DEFAULT_ZHIPU_BASE_URL} "
+        f"ANTHROPIC_API_KEY={resolved_api_key} "
+        f"ANTHROPIC_AUTH_TOKEN={resolved_api_key} "
+        f"HOME=/home/node "
+        f"claude -p \"$(cat /tmp/prompt.txt)\" --output-format stream-json --verbose --dangerously-skip-permissions"
+    )
+
+    aws_cmd = [
+        "aws", "ecs", "execute-command",
+        "--cluster", _ecs_cluster,
+        "--task", task_arn,
+        "--container", _ecs_container_name,
+        "--command", f"/bin/bash -c '{escaped_command}'",
+        "--interactive",
+        "--region", _ecs_region,
+    ]
+
+    start_time = time.time()
+
+    try:
+        # Execute command using pty to simulate TTY for AWS CLI --interactive mode
+        # AWS CLI's --interactive flag expects a TTY; without it, output gets truncated
+        loop = asyncio.get_event_loop()
+
+        def run_command():
+            import pty
+            import os
+            import select
+
+            # Create pseudo-terminal
+            master_fd, slave_fd = pty.openpty()
+
+            # Start process with pseudo-terminal as stdout/stderr
+            proc = subprocess.Popen(
+                aws_cmd,
+                stdout=slave_fd,
+                stderr=slave_fd,
+                stdin=slave_fd,
+                text=True,
+                close_fds=True,
+            )
+            os.close(slave_fd)
+
+            logger.info("[ClaudeCode] Process started with PID: %s (pty mode)", proc.pid)
+
+            # Read output from master_fd with timeout
+            stdout_buffer = []
+            stderr_buffer = []
+
+            # Set master_fd to non-blocking
+            import fcntl
+            flags = fcntl.fcntl(master_fd, fcntl.F_GETFL)
+            fcntl.fcntl(master_fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
+
+            start_read = time.time()
+            read_timeout = timeout or 300
+
+            while True:
+                # Check if process has exited
+                ret = proc.poll()
+                if ret is not None:
+                    # Process finished, do final reads with delay to allow buffer flush
+                    logger.info("[ClaudeCode] Process exited (rc=%s), reading remaining data...", ret)
+                    # Read multiple times with small delays to catch all buffered data
+                    for _ in range(5):
+                        try:
+                            remaining = os.read(master_fd, 65536).decode('utf-8', errors='replace')
+                            if remaining:
+                                logger.info("[ClaudeCode] Read %d more bytes after exit", len(remaining))
+                                stdout_buffer.append(remaining)
+                            time.sleep(0.1)
+                        except OSError:
+                            break
+                    break
+
+                # Use select to wait for data with timeout
+                try:
+                    rlist, _, _ = select.select([master_fd], [], [], 1.0)
+                    if rlist:
+                        try:
+                            data = os.read(master_fd, 4096).decode('utf-8', errors='replace')
+                            if data:
+                                stdout_buffer.append(data)
+                                start_read = time.time()  # Reset timeout on activity
+                        except OSError:
+                            pass
+                except (select.error, ValueError):
+                    # select.error can happen in gevent environment
+                    pass
+
+                # Check timeout
+                if time.time() - start_read > read_timeout:
+                    logger.warning("[ClaudeCode] Timeout reading from pty")
+                    proc.terminate()
+                    try:
+                        proc.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        proc.kill()
+                    break
+
+            os.close(master_fd)
+
+            stdout_text = ''.join(stdout_buffer)
+            stderr_text = ''.join(stderr_buffer)
+
+            logger.info("[ClaudeCode] PTY read complete: %d chunks, %d bytes total",
+                       len(stdout_buffer), len(stdout_text))
+            # Log first 500 chars of output for debugging
+            if stdout_text:
+                logger.info("[ClaudeCode] First 500 chars: %s", repr(stdout_text[:500]))
+
+            return proc, stdout_text, stderr_text
+
+        process, stdout_text, stderr_text = await loop.run_in_executor(None, run_command)
+
+        logger.info("[ClaudeCode] Process finished with returncode: %s", process.returncode)
+
+        # Process output
+        output_lines: list[str] = []
+        stderr_lines: list[str] = []
+        final_result: dict | None = None
+        import json
+
+        # Parse stdout
+        for line in stdout_text.split("\n"):
+            line = line.strip()
+            if line:
+                output_lines.append(line)
+                try:
+                    msg = json.loads(line)
+                    msg_type = msg.get("type", "")
+                    subtype = msg.get("subtype", "")
+                    logger.info("[ClaudeCode] Stream JSON: type=%s, subtype=%s", msg_type, subtype)
+                    if msg_type == "result":
+                        final_result = msg
+                        logger.info("[ClaudeCode] Found result message!")
+                except json.JSONDecodeError:
+                    pass
+
+        # Parse stderr
+        if stderr_text:
+            stderr_lines.extend(stderr_text.split("\n"))
+
+        logger.info("[ClaudeCode] Total stdout_lines: %d, stderr_lines: %d, final_result: %s",
+                   len(output_lines), len(stderr_lines),
+                   "set" if final_result else "None")
+        if stderr_lines and any(l for l in stderr_lines if l.strip()):
+            logger.warning("[ClaudeCode] Stderr output: %s", "\n".join(stderr_lines[-10:]))
+
+        # Log raw output for debugging (last 10 lines, limited to 500 chars)
+        raw_output = "\n".join(output_lines[-10:]) if output_lines else ""
+        if raw_output:
+            logger.info("[ClaudeCode] Raw stdout (last 10 lines): %s", raw_output[:500])
+
+        # Process result
+        if final_result:
+            result_type = final_result.get("resultType", "success")
+            if result_type == "success":
+                content = final_result.get("output", "Code editing completed")
+                logger.info("[ClaudeCode] Success result: %s...", content[:100] if content else "empty")
+                return ToolResponse(
+                    content=[TextBlock(type="text", text=content)]
+                )
+            else:
+                error_msg = final_result.get("error", "Unknown error")
+                logger.info("[ClaudeCode] Error result: %s", error_msg)
+                return ToolResponse(
+                    content=[TextBlock(
+                        type="text",
+                        text=f"[ERROR] {error_msg}",
+                    )]
+                )
+
+        # Fallback: return last line of output (after filtering)
+        if output_lines:
+            # Filter out Session Manager messages
+            raw_output = "\n".join(output_lines)
+            filtered_output = _filter_ecs_exec_output(raw_output)
+            logger.info("[ClaudeCode] Fallback - raw_lines: %d, filtered_length: %d",
+                       len(output_lines), len(filtered_output) if filtered_output else 0)
+            if filtered_output:
+                return ToolResponse(
+                    content=[TextBlock(type="text", text=filtered_output)]
+                )
+            else:
+                # No actual output after filtering (only Session Manager messages)
+                return ToolResponse(
+                    content=[TextBlock(type="text", text="Code editing completed")]
+                )
+
+        return ToolResponse(
+            content=[TextBlock(type="text", text="Code editing completed (no output)")]
+        )
+
+    except Exception as e:
+        logger.exception("[ClaudeCode] ECS execution failed: %s", e)
+        return ToolResponse(
+            content=[TextBlock(
+                type="text",
+                text=f"[ERROR] ECS execution failed: {e}",
+            )]
         )
 
 

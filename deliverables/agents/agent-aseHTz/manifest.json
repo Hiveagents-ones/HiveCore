@@ -1,0 +1,45 @@
+{
+  "id": "agent-aseHTz",
+  "name": "Specialist Agent",
+  "version": "1.0.0",
+  "profile": {
+    "skills": [
+      "design",
+      "frontend",
+      "ui"
+    ],
+    "tools": [],
+    "domains": [
+      "design",
+      "frontend"
+    ],
+    "languages": [
+      "zh",
+      "en"
+    ]
+  },
+  "mcp_servers": {},
+  "builtin_tools": [],
+  "factory": null,
+  "description": "Specialist Agent: design, frontend, ui",
+  "metadata": {
+    "source": "modular_agent_factory",
+    "created_at": "2025-12-30T13:46:49.561141+00:00",
+    "utterance": "{\n  \"initial_requirement\": \"我要搭建一个健身房会员管理系统，包含会员注册、会员卡管理、课程预约、教练排班、费用结算等功能。使用React前端和Python后端，数据库使用SQLite。\",\n  \"summary\": \"基于React前端和Python后端构建的健身房会员管理系统，涵盖会员全生命周期管理、课程预约、教练排班及财务结算功能。\",\n  \"requirements\": [\n    {\n      \"id\": \"REQ-001\",\n      \"title\": \"数据库架构设计\",\n      \"summary\": \"设计SQLite数据库Schema，定义用户、会员卡、课程、教练、预约记录及财务流水等数据表及其关联关系。\",\n      \"category\": \"database\",\n      \"priority\": \"high\",\n      \"depends_on\": []\n    },\n    {\n      \"id\": \"REQ-002\",\n      \"title\": \"后端项目初始化与ORM配置\",\n      \"summary\": \"搭建Python后端项目框架（推荐FastAPI或Flask），配置SQLAlchemy ORM连接SQLite数据库，实现基础数据库迁移脚本。\",\n      \"category\": \"backend\",\n      \"priority\": \"high\",\n      \"depends_on\": [\n        \"REQ-001\"\n      ]\n    },\n    {\n      \"id\": \"REQ-003\",\n      \"title\": \"会员认证与授权API\",\n      \"summary\": \"实现会员注册、登录、密码找回接口，集成JWT令牌机制进行身份验证，区分普通会员与管理员权限。\",\n      \"category\": \"api\",\n      \"priority\": \"high\",\n      \"depends_on\": [\n        \"REQ-002\"\n      ]\n    },\n    {\n      \"id\": \"REQ-004\",\n      \"title\": \"会员基础信息管理API\",\n      \"summary\": \"提供会员信息的增删改查接口，包括个人资料编辑、状态冻结/解冻等功能。\",\n      \"category\": \"api\",\n      \"priority\": \"high\",\n      \"depends_on\": [\n        \"REQ-003\"\n      ]\n    },\n    {\n      \"id\": \"REQ-005\",\n      \"title\": \"会员卡管理API\",\n      \"summary\": \"实现会员卡类型定义（期限卡/次卡）、购卡、续费、挂失及余额/有效期查询逻辑。\",\n      \"category\": \"api\",\n      \"priority\": \"high\",\n      \"depends_on\": [\n        \"REQ-004\"\n      ]\n    },\n    {\n      \"id\": \"REQ-006\",\n      \"title\": \"教练与排班管理API\",\n      \"summary\": \"开发教练信息管理接口，以及教练的排班表设置功能（设定可预约时间段）。\",\n      \"category\": \"api\",\n      \"priority\": \"medium\",\n      \"depends_on\": [\n        \"REQ-002\"\n      ]\n    },\n    {\n      \"id\": \"REQ-007\",\n      \"title\": \"课程预约管理API\",\n      \"summary\": \"实现课程发布、会员预约课程、取消预约逻辑，包含冲突检测（防止超员或时间重叠）。\",\n      \"category\": \"api\",\n      \"priority\": \"high\",\n      \"depends_on\": [\n        \"REQ-006\",\n        \"REQ-005\"\n      ]\n    },\n    {\n      \"id\": \"REQ-008\",\n      \"title\": \"费用结算与财务API\",\n      \"summary\": \"记录所有交易流水（购卡、私教费），支持按时间、类型查询营收报表，支持简单的退款逻辑。\",\n      \"category\": \"api\",\n      \"priority\": \"medium\",\n      \"depends_on\": [\n        \"REQ-007\",\n        \"REQ-005\"\n      ]\n    },\n    {\n      \"id\": \"REQ-009\",\n      \"title\": \"UI/UX 原型设计\",\n      \"summary\": \"设计系统整体视觉风格，绘制会员端（预约、个人中心）和管理端（排班、财务）的高保真原型图。\",\n      \"category\": \"ui\",\n      \"priority\": \"medium\",\n      \"depends_on\": []\n    },\n    {\n      \"id\": \"REQ-010\",\n      \"title\": \"前端项目初始化与布局\",\n      \"summary\": \"搭建React项目，配置路由和状态管理，实现通用的导航栏、侧边栏和响应式布局框架。\",\n      \"category\": \"frontend\",\n      \"priority\": \"high\",\n      \"depends_on\": [\n        \"REQ-009\"\n      ]\n    },\n    {\n      \"id\": \"REQ-011\",\n      \"title\": \"登录注册页面实现\",\n      \"summary\": \"实现用户登录、注册表单界面，对接后端认证API，处理Token存储和路由守卫。\",\n      \"category\": \"frontend\",\n      \"priority\": \"high\",\n      \"depends_on\": [\n        \"REQ-003\",\n        \"REQ-010\"\n      ]\n    },\n    {\n      \"id\": \"REQ-012\",\n      \"title\": \"会员中心功能实现\",\n      \"summary\": \"开发会员信息展示、会员卡状态查看、余额及有效期显示界面。\",\n      \"category\": \"frontend\",\n      \"priority\": \"medium\",\n      \"depends_on\": [\n        \"REQ-004\",\n        \"REQ-011\",\n        \"REQ-005\"\n      ]\n    },\n    {\n      \"id\": \"REQ-013\",\n      \"title\": \"课程预约与排班展示\",\n      \"summary\": \"实现课程列表展示、教练排班日历视图、预约操作及预约记录查询界面。\",\n      \"category\": \"frontend\",\n      \"priority\": \"high\",\n      \"depends_on\": [\n        \"REQ-006\",\n        \"REQ-011\",\n        \"REQ-007\"\n      ]\n    },\n    {\n      \"id\": \"REQ-014\",\n      \"title\": \"管理后台功能实现\",\n      \"summary\": \"开发管理员专用的界面，包括会员管理、课程发布、财务报表查看及数据统计。\",\n      \"category\": \"frontend\",\n      \"priority\": \"medium\",\n      \"depends_on\": [\n        \"REQ-011\",\n        \"REQ-008\"\n      ]\n    }\n  ]\n}",
+    "knowledge_count": 6,
+    "tags": [],
+    "parent_domain": null
+  },
+  "prompt_config": {
+    "system_prompt": "",
+    "role_description": "Specialist Agent",
+    "deliverable_expectation": "专注于 design, frontend 领域，运用 design, frontend, ui 技能",
+    "collaboration_guidelines": [
+      "准确理解用户需求，提供专业解答",
+      "合理使用可用工具完成任务",
+      "遇到不确定时明确指出并提供建议"
+    ],
+    "prompt_template": "",
+    "variables": {}
+  }
+}

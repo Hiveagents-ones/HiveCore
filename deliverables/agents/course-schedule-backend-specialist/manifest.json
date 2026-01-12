@@ -1,0 +1,48 @@
+{
+  "id": "course-schedule-backend-specialist",
+  "name": "课程排班后端专家",
+  "version": "1.0.0",
+  "profile": {
+    "skills": [
+      "database-transactions",
+      "api",
+      "concurrency",
+      "python",
+      "backend"
+    ],
+    "tools": [],
+    "domains": [
+      "backend"
+    ],
+    "languages": [
+      "zh",
+      "en"
+    ]
+  },
+  "mcp_servers": {},
+  "builtin_tools": [],
+  "factory": null,
+  "description": "专注于课程管理与排班系统的后端开发，擅长处理教练排班逻辑、课程容量限制以及并发的库存扣减问题。",
+  "metadata": {
+    "source": "modular_agent_factory",
+    "created_at": "2025-12-31T21:14:02.239762+00:00",
+    "utterance": "{\n  \"initial_requirement\": \"健身房会员管理系统：\\n1. 后端使用 FastAPI + SQLAlchemy + PostgreSQL\\n2. 会员管理：注册、信息维护、会员卡绑定、到期提醒\\n3. 课程管理：课程CRUD、教练排班、课程容量控制\\n4. 预约系统：会员预约课程、取消预约、预约冲突检测\\n5. 计费系统：会员卡类型(次卡/月卡/年卡)、购买、续费、消费记录\\n6. 认证授权：JWT登录、角色权限(管理员/教练/会员)\\n7. 前端使用 Vue 3 + TypeScript + Element Plus\\n8. 包含完整的单元测试和API文档\",\n  \"summary\": \"基于 FastAPI 和 Vue 3 的全栈健身房会员管理系统，包含会员管理、课程预约、计费系统及权限控制。\",\n  \"requirements\": [\n    {\n      \"id\": \"REQ-001\",\n      \"title\": \"数据库架构设计与环境搭建\",\n      \"summary\": \"设计 PostgreSQL 数据库 Schema，包括用户、会员卡、课程、预约、教练等表结构，并配置好开发环境。\",\n      \"category\": \"database\",\n      \"priority\": \"high\",\n      \"depends_on\": []\n    },\n    {\n      \"id\": \"REQ-002\",\n      \"title\": \"后端基础架构与认证模块\",\n      \"summary\": \"搭建 FastAPI 项目框架，配置 SQLAlchemy，实现 JWT 认证机制及基于角色的权限控制（RBAC）中间件。\",\n      \"category\": \"backend\",\n      \"priority\": \"high\",\n      \"depends_on\": [\n        \"REQ-001\"\n      ]\n    },\n    {\n      \"id\": \"REQ-003\",\n      \"title\": \"会员管理 API\",\n      \"summary\": \"实现会员注册、信息查询与更新、会员卡绑定及到期时间查询接口。\",\n      \"category\": \"api\",\n      \"priority\": \"high\",\n      \"depends_on\": [\n        \"REQ-002\"\n      ]\n    },\n    {\n      \"id\": \"REQ-004\",\n      \"title\": \"计费系统 API\",\n      \"summary\": \"实现会员卡类型管理（次卡/月卡/年卡）、购买、续费逻辑及消费记录生成接口。\",\n      \"category\": \"api\",\n      \"priority\": \"high\",\n      \"depends_on\": [\n        \"REQ-003\"\n      ]\n    },\n    {\n      \"id\": \"REQ-005\",\n      \"title\": \"课程与排班管理 API\",\n      \"summary\": \"实现课程 CRUD、教练排班设置及课程容量限制逻辑。\",\n      \"category\": \"api\",\n      \"priority\": \"medium\",\n      \"depends_on\": [\n        \"REQ-002\"\n      ]\n    },\n    {\n      \"id\": \"REQ-006\",\n      \"title\": \"预约系统核心逻辑 API\",\n      \"summary\": \"实现课程预约、取消预约功能，包含并发情况下的容量冲突检测与数据库事务控制。\",\n      \"category\": \"api\",\n      \"priority\": \"high\",\n      \"depends_on\": [\n        \"REQ-004\",\n        \"REQ-005\"\n      ]\n    },\n    {\n      \"id\": \"REQ-007\",\n      \"title\": \"自动化测试与 API 文档\",\n      \"summary\": \"编写核心业务逻辑的单元测试，并配置自动生成 OpenAPI (Swagger) 文档。\",\n      \"category\": \"other\",\n      \"priority\": \"medium\",\n      \"depends_on\": [\n        \"REQ-006\"\n      ]\n    },\n    {\n      \"id\": \"REQ-008\",\n      \"title\": \"前端项目架构与通用组件\",\n      \"summary\": \"搭建 Vue 3 + TypeScript + Element Plus 项目，配置路由、状态管理及通用 UI 组件（布局、导航等）。\",\n      \"category\": \"frontend\",\n      \"priority\": \"high\",\n      \"depends_on\": []\n    },\n    {\n      \"id\": \"REQ-009\",\n      \"title\": \"认证与权限前端实现\",\n      \"summary\": \"实现登录页面、JWT Token 存储与刷新、路由守卫及角色权限菜单渲染。\",\n      \"category\": \"frontend\",\n      \"priority\": \"high\",\n      \"depends_on\": [\n        \"REQ-008\"\n      ]\n    },\n    {\n      \"id\": \"REQ-010\",\n      \"title\": \"会员与计费管理界面\",\n      \"summary\": \"开发会员列表、详情编辑、会员卡购买续费及消费记录展示页面。\",\n      \"category\": \"ui\",\n      \"priority\": \"medium\",\n      \"depends_on\": [\n        \"REQ-009\"\n      ]\n    },\n    {\n      \"id\": \"REQ-011\",\n      \"title\": \"课程与排班管理界面\",\n      \"summary\": \"开发课程列表、排班日历视图及课程容量设置页面。\",\n      \"category\": \"ui\",\n      \"priority\": \"medium\",\n      \"depends_on\": [\n        \"REQ-009\"\n      ]\n    },\n    {\n      \"id\": \"REQ-012\",\n      \"title\": \"预约系统前端交互\",\n      \"summary\": \"开发会员端课程预约、取消预约功能，处理冲突提示和预约状态反馈。\",\n      \"category\": \"ui\",\n      \"priority\": \"high\",\n      \"depends_on\": [\n        \"REQ-011\"\n      ]\n    }\n  ]\n}",
+    "knowledge_count": 6,
+    "tags": [
+      "scheduling",
+      "inventory-management",
+      "course-crud",
+      "capacity-limits",
+      "optimistic-lock"
+    ],
+    "parent_domain": "backend"
+  },
+  "prompt_config": {
+    "system_prompt": "你是一个专注于课程排班与管理的后端专家。你需要设计稳健的API来处理课程的增删改查，并实现教练排班逻辑。特别注意在多人预约同一课程时的并发容量控制，确保不发生超卖。",
+    "role_description": "",
+    "deliverable_expectation": "",
+    "collaboration_guidelines": [],
+    "prompt_template": "",
+    "variables": {}
+  }
+}

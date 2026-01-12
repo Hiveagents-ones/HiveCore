@@ -1,0 +1,52 @@
+{
+  "id": "python-backend-builder",
+  "name": "Python后端开发专家",
+  "version": "1.0.0",
+  "profile": {
+    "skills": [
+      "database",
+      "python",
+      "sqlalchemy",
+      "backend",
+      "flask",
+      "fastapi"
+    ],
+    "tools": [],
+    "domains": [
+      "specialist",
+      "backend"
+    ],
+    "languages": [
+      "zh",
+      "en"
+    ]
+  },
+  "mcp_servers": {},
+  "builtin_tools": [],
+  "factory": null,
+  "description": "专注于Python后端框架搭建，精通FastAPI和Flask，能够熟练配置SQLAlchemy ORM及数据库连接。",
+  "metadata": {
+    "source": "modular_agent_factory",
+    "created_at": "2025-12-30T12:28:11.864635+00:00",
+    "utterance": "{\n  \"initial_requirement\": \"我要搭建一个健身房会员管理系统，包含会员注册、会员卡管理、课程预约、教练排班、费用结算等功能。使用React前端和Python后端，数据库使用SQLite。\",\n  \"summary\": \"基于React前端和Python后端的健身房会员管理系统，支持会员全生命周期管理、课程预约、教练排班及费用结算功能。\",\n  \"requirements\": [\n    {\n      \"id\": \"REQ-001\",\n      \"title\": \"数据库架构设计\",\n      \"summary\": \"设计SQLite数据库Schema，包含用户表、会员卡表、课程表、教练表、预约记录表及订单表，并定义外键关系。\",\n      \"category\": \"database\",\n      \"priority\": \"high\",\n      \"depends_on\": []\n    },\n    {\n      \"id\": \"REQ-002\",\n      \"title\": \"后端项目框架搭建\",\n      \"summary\": \"搭建Python后端项目（推荐FastAPI或Flask），配置ORM（如SQLAlchemy），实现数据库连接与基础配置。\",\n      \"category\": \"backend\",\n      \"priority\": \"high\",\n      \"depends_on\": [\n        \"REQ-001\"\n      ]\n    },\n    {\n      \"id\": \"REQ-003\",\n      \"title\": \"用户认证与授权API\",\n      \"summary\": \"实现会员和管理员的注册、登录、JWT令牌生成与验证接口，以及基于角色的权限控制（RBAC）。\",\n      \"category\": \"api\",\n      \"priority\": \"high\",\n      \"depends_on\": [\n        \"REQ-002\"\n      ]\n    },\n    {\n      \"id\": \"REQ-004\",\n      \"title\": \"会员管理API\",\n      \"summary\": \"实现会员信息的增删改查（CRUD）接口，支持查询会员状态、有效期及个人信息。\",\n      \"category\": \"api\",\n      \"priority\": \"high\",\n      \"depends_on\": [\n        \"REQ-003\"\n      ]\n    },\n    {\n      \"id\": \"REQ-005\",\n      \"title\": \"会员卡管理API\",\n      \"summary\": \"实现会员卡类型定义、开卡、续费、挂失及状态变更接口，支持计算会员有效期。\",\n      \"category\": \"api\",\n      \"priority\": \"medium\",\n      \"depends_on\": [\n        \"REQ-004\"\n      ]\n    },\n    {\n      \"id\": \"REQ-006\",\n      \"title\": \"教练排班管理API\",\n      \"summary\": \"实现教练信息的维护及排班表管理接口，支持添加、修改和删除教练的可授课时间段。\",\n      \"category\": \"api\",\n      \"priority\": \"medium\",\n      \"depends_on\": [\n        \"REQ-003\"\n      ]\n    },\n    {\n      \"id\": \"REQ-007\",\n      \"title\": \"课程预约API\",\n      \"summary\": \"实现会员查看课程表、预约课程、取消预约接口，需包含名额校验和冲突检测逻辑。\",\n      \"category\": \"api\",\n      \"priority\": \"high\",\n      \"depends_on\": [\n        \"REQ-006\"\n      ]\n    },\n    {\n      \"id\": \"REQ-008\",\n      \"title\": \"费用结算API\",\n      \"summary\": \"实现消费记录生成、账单查询及退款处理接口，支持按时间范围和会员类型统计营收。\",\n      \"category\": \"api\",\n      \"priority\": \"medium\",\n      \"depends_on\": [\n        \"REQ-005\",\n        \"REQ-007\"\n      ]\n    },\n    {\n      \"id\": \"REQ-009\",\n      \"title\": \"UI/UX 原型设计\",\n      \"summary\": \"设计系统整体界面布局，包括会员端（预约、个人中心）和管理端（后台管理、数据看板）的线框图或高保真原型。\",\n      \"category\": \"ui\",\n      \"priority\": \"medium\",\n      \"depends_on\": []\n    },\n    {\n      \"id\": \"REQ-010\",\n      \"title\": \"前端项目框架搭建\",\n      \"summary\": \"初始化React项目，配置路由、状态管理库（如Redux Toolkit或Context API）、HTTP请求库（如Axios）及UI组件库。\",\n      \"category\": \"frontend\",\n      \"priority\": \"high\",\n      \"depends_on\": [\n        \"REQ-009\"\n      ]\n    },\n    {\n      \"id\": \"REQ-011\",\n      \"title\": \"前端登录注册页面\",\n      \"summary\": \"实现用户登录、注册表单界面，对接后端认证API，包含表单验证和错误提示。\",\n      \"category\": \"frontend\",\n      \"priority\": \"high\",\n      \"depends_on\": [\n        \"REQ-003\",\n        \"REQ-010\"\n      ]\n    },\n    {\n      \"id\": \"REQ-012\",\n      \"title\": \"会员中心前端实现\",\n      \"summary\": \"实现会员查看个人信息、会员卡状态、余额及历史消费记录的界面。\",\n      \"category\": \"frontend\",\n      \"priority\": \"medium\",\n      \"depends_on\": [\n        \"REQ-011\",\n        \"REQ-005\",\n        \"REQ-004\"\n      ]\n    },\n    {\n      \"id\": \"REQ-013\",\n      \"title\": \"课程预约前端实现\",\n      \"summary\": \"实现课程日历展示、教练排班查看、预约操作及预约状态管理的交互界面。\",\n      \"category\": \"frontend\",\n      \"priority\": \"high\",\n      \"depends_on\": [\n        \"REQ-007\",\n        \"REQ-011\"\n      ]\n    },\n    {\n      \"id\": \"REQ-014\",\n      \"title\": \"管理后台前端实现\",\n      \"summary\": \"实现管理员专用的界面，包含会员管理、教练排班设置、课程发布及财务报表查看功能。\",\n      \"category\": \"frontend\",\n      \"priority\": \"medium\",\n      \"depends_on\": [\n        \"REQ-011\",\n        \"REQ-008\",\n        \"REQ-006\",\n        \"REQ-004\"\n      ]\n    }\n  ]\n}",
+    "knowledge_count": 6,
+    "tags": [
+      "python",
+      "api",
+      "rest",
+      "orm",
+      "sqlalchemy",
+      "fastapi",
+      "flask"
+    ],
+    "parent_domain": "backend"
+  },
+  "prompt_config": {
+    "system_prompt": "你是一个Python后端开发专家，负责搭建基于FastAPI或Flask的项目框架，配置数据库连接与ORM，并确保基础项目结构的规范性与可扩展性。",
+    "role_description": "",
+    "deliverable_expectation": "",
+    "collaboration_guidelines": [],
+    "prompt_template": "",
+    "variables": {}
+  }
+}

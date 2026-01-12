@@ -360,6 +360,9 @@ class CollaborativeExecutor:
         agents: dict[str, AgentBase],
         agent_roles: dict[str, str],
         timeout_seconds: float = 300.0,
+        timeline_tracker: Any | None = None,
+        round_index: int = 1,
+        project_id: str | None = None,
     ) -> None:
         """Initialize the collaborative executor.
 
@@ -367,6 +370,9 @@ class CollaborativeExecutor:
             agents: Map of agent_id -> AgentBase
             agent_roles: Map of agent_id -> role name
             timeout_seconds: Maximum execution time
+            timeline_tracker: Optional TimelineTracker for execution recording
+            round_index: Round index for observability tracking
+            project_id: Project ID for observability tracking
         """
         self.agents = agents
         self.agent_roles = agent_roles
@@ -374,6 +380,9 @@ class CollaborativeExecutor:
         self.workspace = SharedWorkspace()
         self._collaborative_agents: dict[str, CollaborativeAgent] = {}
         self._message_queue: asyncio.Queue[CollaborationMessage] = asyncio.Queue()
+        self._timeline_tracker = timeline_tracker
+        self._round_index = round_index
+        self._project_id = project_id
 
     def _wrap_agents(self) -> list[CollaborativeAgent]:
         """Wrap all agents with collaboration capabilities."""
@@ -500,16 +509,56 @@ class CollaborativeExecutor:
         agent: CollaborativeAgent,
         task_desc: str,
     ) -> None:
-        """Execute a single agent's task."""
+        """Execute a single agent's task with timeline tracking."""
         agent.state.current_task = task_desc
         agent.state.status = "working"
 
+        # Start timeline tracking if tracker is available
+        timeline_exec_id = None
+        if self._timeline_tracker:
+            try:
+                timeline_exec_id = self._timeline_tracker.start_execution(
+                    agent_id=agent.id,
+                    agent_name=agent.role,
+                    node_id="parallel_execution",
+                    project_id=self._project_id,
+                    round_index=self._round_index,
+                )
+            except Exception:
+                # Timeline tracking should not affect main flow
+                pass
+
         try:
             msg = Msg(name="Coordinator", role="user", content=task_desc)
-            await agent.reply(msg)
+            result = await agent.reply(msg)
+
+            # End timeline tracking with success
+            if timeline_exec_id and self._timeline_tracker:
+                try:
+                    content = result.get_text_content() if result else ""
+                    self._timeline_tracker.end_execution(
+                        execution_id=timeline_exec_id,
+                        content=content,
+                        success=True,
+                    )
+                except Exception:
+                    pass
+
         except Exception as e:
             agent.state.status = "blocked"
             agent.state.blocked_reason = str(e)
+
+            # End timeline tracking with failure
+            if timeline_exec_id and self._timeline_tracker:
+                try:
+                    self._timeline_tracker.end_execution(
+                        execution_id=timeline_exec_id,
+                        content=f"执行失败: {str(e)}",
+                        success=False,
+                        error_message=str(e),
+                    )
+                except Exception:
+                    pass
 
     async def _route_messages(self) -> None:
         """Route collaboration messages between agents."""

@@ -443,6 +443,8 @@ class ExecutionLoop:
         # 300s (5 min) to accommodate npm install + build for Node.js projects
         # Previous 120s was too short, causing 84+ timeout failures
         active_validation_timeout: float = 300.0,
+        # Callback for agent execution events (for SSE/observability)
+        on_agent_execute: Callable[[str, str, str, str], None] | None = None,
     ) -> None:
         self.project_pool = project_pool
         self.memory_pool = memory_pool
@@ -467,6 +469,8 @@ class ExecutionLoop:
         # Active validation: call Claude Code to verify task results
         self.enable_active_validation = enable_active_validation
         self.active_validation_timeout = active_validation_timeout
+        # Callback for agent execution events (agent_id, event_type, node_id, task)
+        self._on_agent_execute = on_agent_execute
         # Task-level validator (created lazily)
         self._task_validator: TaskLevelValidator | None = None
         # Project task boards for tracking agent-level progress
@@ -889,6 +893,8 @@ class ExecutionLoop:
         This method enables agents loaded from registry (with only AgentProfile
         in _candidates) to be instantiated on-demand when needed for execution.
 
+        Falls back to spawning a new metaso agent if lazy loading fails.
+
         Args:
             agent_id: The agent identifier.
 
@@ -909,17 +915,23 @@ class ExecutionLoop:
                 break
 
         if profile is None:
-            return None
+            _log_execution(
+                f"Agent {agent_id} 不在 _candidates 中",
+                level="warning",
+                prefix="[LazyLoad]",
+            )
+            # Try spawn fallback even without profile
+            return self._try_spawn_fallback_agent(agent_id, runtime_agents)
 
         # Check if we have manifest_path to load from
         manifest_path = profile.metadata.get("manifest_path")
         if not manifest_path:
             _log_execution(
-                f"Agent {agent_id} 无 manifest_path，无法加载实例",
+                f"Agent {agent_id} 无 manifest_path，尝试生成备用 Agent",
                 level="warning",
                 prefix="[LazyLoad]",
             )
-            return None
+            return self._try_spawn_fallback_agent(agent_id, runtime_agents, profile)
 
         # Try to load the agent instance
         try:
@@ -928,6 +940,16 @@ class ExecutionLoop:
 
             # manifest_path points to manifest.json, agent_dir is its parent
             agent_dir = str(Path(manifest_path).parent)
+
+            # Verify manifest exists
+            manifest_file = Path(manifest_path)
+            if not manifest_file.exists():
+                _log_execution(
+                    f"Agent {agent_id} manifest 文件不存在: {manifest_path}，尝试生成备用 Agent",
+                    level="warning",
+                    prefix="[LazyLoad]",
+                )
+                return self._try_spawn_fallback_agent(agent_id, runtime_agents, profile)
 
             # Get LLM from team_selector if available
             llm = None
@@ -978,9 +1000,91 @@ class ExecutionLoop:
 
         except Exception as e:
             _log_execution(
-                f"Agent {agent_id} 懒加载失败: {e}",
+                f"Agent {agent_id} 懒加载失败: {e}，尝试生成备用 Agent",
                 level="error",
                 prefix="[LazyLoad]",
+            )
+            return self._try_spawn_fallback_agent(agent_id, runtime_agents, profile)
+
+    def _try_spawn_fallback_agent(
+        self,
+        agent_id: str,
+        runtime_agents: dict,
+        profile: "AgentProfile | None" = None,
+    ) -> object | None:
+        """Try to spawn a fallback agent using spawn_factory.
+
+        This provides a fallback mechanism when lazy loading fails.
+
+        Args:
+            agent_id: The original agent identifier.
+            runtime_agents: The runtime agents dictionary.
+            profile: Optional AgentProfile with metadata.
+
+        Returns:
+            The spawned agent instance, or None if spawning fails.
+        """
+        spawn_factory = getattr(self.orchestrator, "spawn_factory", None)
+        if spawn_factory is None:
+            _log_execution(
+                f"Agent {agent_id} 无法加载且无 spawn_factory 回退",
+                level="error",
+                prefix="[Fallback]",
+            )
+            return None
+
+        try:
+            from ..aa import Requirement
+
+            # Build a requirement from profile metadata or use defaults
+            duty = profile.metadata.get("duty", "") if profile else ""
+            detail = profile.metadata.get("detail", "") if profile else ""
+
+            # Create a generic requirement for the spawned agent
+            requirement = Requirement(
+                skills={"general", "software-engineering"},
+                tools=set(),
+                domains={"general"},
+                languages={"zh", "en"},
+            )
+
+            # Use duty as utterance context
+            utterance = f"执行 {duty} 相关任务" if duty else "执行通用开发任务"
+
+            _log_execution(
+                f"正在为 {agent_id} 生成备用 Agent (duty={duty})",
+                level="info",
+                prefix="[Fallback]",
+            )
+
+            # Spawn a new agent
+            spawned_profile, agent_instance = spawn_factory(requirement, utterance)
+
+            if agent_instance:
+                # Store with the original agent_id so it can be found later
+                runtime_agents[agent_id] = agent_instance
+                # Also store with spawned agent's ID
+                runtime_agents[spawned_profile.agent_id] = agent_instance
+
+                _log_execution(
+                    f"已生成备用 Agent: {spawned_profile.agent_id} (替代 {agent_id})",
+                    level="info",
+                    prefix="[Fallback]",
+                )
+                return agent_instance
+            else:
+                _log_execution(
+                    f"备用 Agent 生成失败: spawn_factory 返回 None",
+                    level="error",
+                    prefix="[Fallback]",
+                )
+                return None
+
+        except Exception as e:
+            _log_execution(
+                f"备用 Agent 生成异常: {e}",
+                level="error",
+                prefix="[Fallback]",
             )
             return None
 
@@ -1176,25 +1280,53 @@ class ExecutionLoop:
         else:
             enriched_prompt = prompt
 
+        # 获取 agent 名称用于事件发布
+        agent_name = getattr(agent, 'name', agent_id)
+
+        # 发布 agent_started 事件
+        if self._on_agent_execute:
+            try:
+                self._on_agent_execute(agent_id, 'agent_started', node_id or '', enriched_prompt[:100])
+            except Exception as callback_error:
+                _log_execution(f"Agent callback error (started): {callback_error}", level="warning")
+
         try:
             result = await agent.reply(
                 Msg(name="system", role="user", content=enriched_prompt),
                 task_id=node_id,  # Pass task_id for observability
             )
             content = result.get_text_content() or ""
-            return AgentOutput(
+            output = AgentOutput(
                 agent_id=agent_id,
                 node_id=node_id or "unknown",
                 content=content,
                 success=True,
             )
+
+            # 发布 agent_completed 事件
+            if self._on_agent_execute:
+                try:
+                    self._on_agent_execute(agent_id, 'agent_completed', node_id or '', content[:200])
+                except Exception as callback_error:
+                    _log_execution(f"Agent callback error (completed): {callback_error}", level="warning")
+
+            return output
         except Exception as e:
-            return AgentOutput(
+            output = AgentOutput(
                 agent_id=agent_id,
                 node_id=node_id or "unknown",
                 content=f"执行失败: {str(e)}",
                 success=False,
             )
+
+            # 发布 agent_error 事件
+            if self._on_agent_execute:
+                try:
+                    self._on_agent_execute(agent_id, 'agent_error', node_id or '', str(e))
+                except Exception as callback_error:
+                    _log_execution(f"Agent callback error (error): {callback_error}", level="warning")
+
+            return output
 
     async def _execute_with_msghub(
         self,
@@ -2351,12 +2483,33 @@ class ExecutionLoop:
         """
         project_id = self._ensure_project(intent)
         self._persist_intent(intent)
+
+        # DEBUG: Log intent requirements
+        _log_execution(
+            f"[DEBUG] Intent requirements: {len(intent.requirements)} items, keys={list(intent.requirements.keys())}",
+            level="info",
+        )
+
         plan = self.orchestrator.plan_strategy(intent, acceptance)
+
+        # DEBUG: Log plan details
+        _log_execution(
+            f"[DEBUG] Plan: requirement_map={len(plan.requirement_map)}, "
+            f"rankings={len(plan.rankings)}, team_selections={len(plan.team_selections)}",
+            level="info",
+        )
+
         graph = self.task_graph_builder.build(
             requirements=plan.requirement_map,
             rankings=plan.rankings,
             edges=None,
             team_selections=plan.team_selections,
+        )
+
+        # DEBUG: Log graph nodes
+        _log_execution(
+            f"[DEBUG] Built graph with {len(list(graph.nodes()))} nodes",
+            level="info",
         )
 
         # Initialize project task board from plan

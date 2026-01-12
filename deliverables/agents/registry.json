@@ -1,0 +1,1060 @@
+{
+  "version": "1.0.0",
+  "updated_at": "2026-01-01T04:21:50.087583+00:00",
+  "domains": {
+    "backend": {
+      "name": "backend",
+      "display_name": "后端开发",
+      "description": "后端服务、API、数据库开发",
+      "parent": null,
+      "is_core": true,
+      "created_by": "system",
+      "created_at": "2026-01-01T04:18:23.952032+00:00",
+      "capabilities": [
+        "python",
+        "java",
+        "go",
+        "api",
+        "database",
+        "sql"
+      ]
+    },
+    "frontend": {
+      "name": "frontend",
+      "display_name": "前端开发",
+      "description": "Web/移动端前端开发",
+      "parent": null,
+      "is_core": true,
+      "created_by": "system",
+      "created_at": "2026-01-01T04:18:23.952043+00:00",
+      "capabilities": [
+        "javascript",
+        "typescript",
+        "react",
+        "vue",
+        "css",
+        "html"
+      ]
+    },
+    "design": {
+      "name": "design",
+      "display_name": "设计",
+      "description": "UI/UX设计、视觉设计",
+      "parent": null,
+      "is_core": true,
+      "created_by": "system",
+      "created_at": "2026-01-01T04:18:23.952045+00:00",
+      "capabilities": [
+        "ui",
+        "ux",
+        "figma",
+        "sketch",
+        "wireframe",
+        "prototype"
+      ]
+    },
+    "qa": {
+      "name": "qa",
+      "display_name": "质量保证",
+      "description": "测试、代码审查、质量保证",
+      "parent": null,
+      "is_core": true,
+      "created_by": "system",
+      "created_at": "2026-01-01T04:18:23.952047+00:00",
+      "capabilities": [
+        "testing",
+        "code_review",
+        "automation",
+        "security"
+      ]
+    },
+    "devops": {
+      "name": "devops",
+      "display_name": "DevOps",
+      "description": "部署、运维、CI/CD",
+      "parent": null,
+      "is_core": true,
+      "created_by": "system",
+      "created_at": "2026-01-01T04:18:23.952048+00:00",
+      "capabilities": [
+        "docker",
+        "kubernetes",
+        "ci_cd",
+        "aws",
+        "azure",
+        "gcp"
+      ]
+    },
+    "architecture": {
+      "name": "architecture",
+      "display_name": "系统架构",
+      "description": "系统设计、技术架构",
+      "parent": null,
+      "is_core": true,
+      "created_by": "system",
+      "created_at": "2026-01-01T04:18:23.952050+00:00",
+      "capabilities": [
+        "system_design",
+        "microservices",
+        "distributed_systems"
+      ]
+    },
+    "product": {
+      "name": "product",
+      "display_name": "产品",
+      "description": "产品管理、需求分析",
+      "parent": null,
+      "is_core": true,
+      "created_by": "system",
+      "created_at": "2026-01-01T04:18:23.952051+00:00",
+      "capabilities": [
+        "requirements",
+        "user_story",
+        "product_management"
+      ]
+    },
+    "specialist": {
+      "name": "specialist",
+      "display_name": "专家",
+      "description": "特定领域专家（无法归入其他分类）",
+      "parent": null,
+      "is_core": true,
+      "created_by": "system",
+      "created_at": "2026-01-01T04:18:23.952052+00:00",
+      "capabilities": []
+    },
+    "security": {
+      "name": "security",
+      "display_name": "security",
+      "description": "",
+      "parent": "backend",
+      "is_core": false,
+      "created_by": "llm",
+      "created_at": "2025-12-31T10:39:58.387832+00:00",
+      "capabilities": []
+    }
+  },
+  "agents": {
+    "agent-Jf4vpA": {
+      "agent_id": "agent-Jf4vpA",
+      "name": "Specialist Agent",
+      "domains": [
+        "frontend",
+        "design"
+      ],
+      "skills": [
+        "ui",
+        "frontend",
+        "design"
+      ],
+      "tags": [],
+      "manifest_path": "deliverables/agents/agent-Jf4vpA/manifest.json",
+      "created_by": "llm",
+      "created_at": "2025-12-30T10:17:46.506878+00:00",
+      "usage_count": 0,
+      "success_rate": 0.0,
+      "is_active": true
+    },
+    "agent-RfvamK": {
+      "agent_id": "agent-RfvamK",
+      "name": "Specialist Agent",
+      "domains": [
+        "specialist"
+      ],
+      "skills": [
+        "deployment",
+        "database",
+        "other"
+      ],
+      "tags": [],
+      "manifest_path": "deliverables/agents/agent-RfvamK/manifest.json",
+      "created_by": "llm",
+      "created_at": "2025-12-30T10:18:42.617098+00:00",
+      "usage_count": 0,
+      "success_rate": 0.0,
+      "is_active": true
+    },
+    "python-backend-builder": {
+      "agent_id": "python-backend-builder",
+      "name": "Python后端开发专家",
+      "domains": [
+        "specialist",
+        "backend"
+      ],
+      "skills": [
+        "database",
+        "python",
+        "sqlalchemy",
+        "backend",
+        "flask",
+        "fastapi"
+      ],
+      "tags": [
+        "python",
+        "api",
+        "rest",
+        "orm",
+        "sqlalchemy",
+        "fastapi",
+        "flask"
+      ],
+      "manifest_path": "deliverables/agents/python-backend-builder/manifest.json",
+      "created_by": "llm",
+      "created_at": "2025-12-30T12:28:11.864885+00:00",
+      "usage_count": 0,
+      "success_rate": 0.0,
+      "is_active": true
+    },
+    "auth-security-qa": {
+      "agent_id": "auth-security-qa",
+      "name": "认证与安全测试专家",
+      "domains": [
+        "backend",
+        "qa"
+      ],
+      "skills": [
+        "api",
+        "owasp",
+        "jwt",
+        "testing",
+        "security",
+        "backend"
+      ],
+      "tags": [
+        "api-testing",
+        "authentication",
+        "authorization",
+        "security-audit",
+        "owasp-top-10"
+      ],
+      "manifest_path": "deliverables/agents/auth-security-qa/manifest.json",
+      "created_by": "llm",
+      "created_at": "2025-12-30T12:29:35.628982+00:00",
+      "usage_count": 0,
+      "success_rate": 0.0,
+      "is_active": true
+    },
+    "agent-nMBUwG": {
+      "agent_id": "agent-nMBUwG",
+      "name": "Specialist Agent",
+      "domains": [
+        "qa",
+        "backend"
+      ],
+      "skills": [
+        "testing",
+        "api",
+        "backend",
+        "security"
+      ],
+      "tags": [],
+      "manifest_path": "deliverables/agents/agent-nMBUwG/manifest.json",
+      "created_by": "llm",
+      "created_at": "2025-12-30T13:43:47.488122+00:00",
+      "usage_count": 0,
+      "success_rate": 0.0,
+      "is_active": true
+    },
+    "agent-aseHTz": {
+      "agent_id": "agent-aseHTz",
+      "name": "Specialist Agent",
+      "domains": [
+        "design",
+        "frontend"
+      ],
+      "skills": [
+        "design",
+        "frontend",
+        "ui"
+      ],
+      "tags": [],
+      "manifest_path": "deliverables/agents/agent-aseHTz/manifest.json",
+      "created_by": "llm",
+      "created_at": "2025-12-30T13:46:49.561647+00:00",
+      "usage_count": 0,
+      "success_rate": 0.0,
+      "is_active": true
+    },
+    "booking-flow-ux-specialist": {
+      "agent_id": "booking-flow-ux-specialist",
+      "name": "预约流程交互设计专家",
+      "domains": [
+        "design",
+        "frontend",
+        "product"
+      ],
+      "skills": [
+        "figma",
+        "interaction-design",
+        "prototyping",
+        "ux-design",
+        "wireframing",
+        "frontend",
+        "user-research"
+      ],
+      "tags": [
+        "calendar-ui",
+        "booking-system",
+        "user-flow",
+        "interaction",
+        "wireframe"
+      ],
+      "manifest_path": "deliverables/agents/booking-flow-ux-specialist/manifest.json",
+      "created_by": "llm",
+      "created_at": "2025-12-30T15:11:09.913841+00:00",
+      "usage_count": 0,
+      "success_rate": 0.0,
+      "is_active": true
+    },
+    "system-architect": {
+      "agent_id": "system-architect",
+      "name": "系统架构设计专家",
+      "domains": [
+        "design",
+        "specialist",
+        "architecture"
+      ],
+      "skills": [
+        "design",
+        "architecture",
+        "security",
+        "system-design",
+        "database",
+        "database-modeling"
+      ],
+      "tags": [
+        "schema-design",
+        "mysql",
+        "postgresql",
+        "normalization",
+        "security-strategy"
+      ],
+      "manifest_path": "deliverables/agents/system-architect/manifest.json",
+      "created_by": "llm",
+      "created_at": "2025-12-31T01:15:34.698561+00:00",
+      "usage_count": 0,
+      "success_rate": 0.0,
+      "is_active": true
+    },
+    "billing-system-architect": {
+      "agent_id": "billing-system-architect",
+      "name": "计费系统架构设计专家",
+      "domains": [
+        "architecture",
+        "backend"
+      ],
+      "skills": [
+        "billing-logic",
+        "backend",
+        "api-design",
+        "database-modeling",
+        "architecture",
+        "api"
+      ],
+      "tags": [
+        "schema-design",
+        "billing",
+        "mysql",
+        "system-design"
+      ],
+      "manifest_path": "deliverables/agents/billing-system-architect/manifest.json",
+      "created_by": "llm",
+      "created_at": "2025-12-31T04:30:35.722459+00:00",
+      "usage_count": 0,
+      "success_rate": 0.0,
+      "is_active": true
+    },
+    "billing-booking-frontend-expert": {
+      "agent_id": "billing-booking-frontend-expert",
+      "name": "计费与预约前端专家",
+      "domains": [
+        "frontend"
+      ],
+      "skills": [
+        "state-management",
+        "react",
+        "vue",
+        "frontend",
+        "form-validation",
+        "api-integration"
+      ],
+      "tags": [
+        "booking-ui",
+        "billing-frontend",
+        "conflict-handling",
+        "data-tables",
+        "member-portal"
+      ],
+      "manifest_path": "deliverables/agents/billing-booking-frontend-expert/manifest.json",
+      "created_by": "llm",
+      "created_at": "2025-12-31T04:31:21.031098+00:00",
+      "usage_count": 0,
+      "success_rate": 0.0,
+      "is_active": true
+    },
+    "postgresql-devops-engineer": {
+      "agent_id": "postgresql-devops-engineer",
+      "name": "PostgreSQL数据库与运维专家",
+      "domains": [
+        "devops",
+        "design",
+        "specialist"
+      ],
+      "skills": [
+        "environment-setup",
+        "sql",
+        "docker",
+        "database",
+        "database-administration",
+        "design",
+        "deployment",
+        "postgresql"
+      ],
+      "tags": [
+        "postgres",
+        "schema-migration",
+        "database-setup",
+        "environment-config"
+      ],
+      "manifest_path": "deliverables/agents/postgresql-devops-engineer/manifest.json",
+      "created_by": "llm",
+      "created_at": "2025-12-31T09:38:11.606458+00:00",
+      "usage_count": 0,
+      "success_rate": 0.0,
+      "is_active": true
+    },
+    "high-concurrency-booking-backend": {
+      "agent_id": "high-concurrency-booking-backend",
+      "name": "高并发预约后端专家",
+      "domains": [
+        "qa",
+        "backend",
+        "specialist"
+      ],
+      "skills": [
+        "backend",
+        "concurrency",
+        "redis",
+        "api",
+        "database-transactions",
+        "testing"
+      ],
+      "tags": [
+        "locking",
+        "pessimistic-lock",
+        "optimistic-lock",
+        "race-condition",
+        "inventory-management",
+        "transaction-safety"
+      ],
+      "manifest_path": "deliverables/agents/high-concurrency-booking-backend/manifest.json",
+      "created_by": "llm",
+      "created_at": "2025-12-31T10:39:24.620931+00:00",
+      "usage_count": 0,
+      "success_rate": 0.0,
+      "is_active": true
+    },
+    "concurrency-test-specialist": {
+      "agent_id": "concurrency-test-specialist",
+      "name": "并发与逻辑测试专家",
+      "domains": [
+        "qa",
+        "backend",
+        "specialist"
+      ],
+      "skills": [
+        "api-testing",
+        "backend",
+        "load-testing",
+        "api",
+        "jmeter",
+        "testing"
+      ],
+      "tags": [
+        "concurrency-testing",
+        "race-condition-test",
+        "api-automation",
+        "stress-test",
+        "logic-verification"
+      ],
+      "manifest_path": "deliverables/agents/concurrency-test-specialist/manifest.json",
+      "created_by": "llm",
+      "created_at": "2025-12-31T10:39:29.377236+00:00",
+      "usage_count": 0,
+      "success_rate": 0.0,
+      "is_active": true
+    },
+    "auth-backend-engineer": {
+      "agent_id": "auth-backend-engineer",
+      "name": "认证后端开发专家",
+      "domains": [
+        "security",
+        "frontend",
+        "backend"
+      ],
+      "skills": [
+        "authorization",
+        "rbac",
+        "security",
+        "jwt",
+        "frontend",
+        "authentication",
+        "api"
+      ],
+      "tags": [
+        "jwt",
+        "oauth2",
+        "login-api",
+        "session-management",
+        "access-control"
+      ],
+      "manifest_path": "deliverables/agents/auth-backend-engineer/manifest.json",
+      "created_by": "llm",
+      "created_at": "2025-12-31T10:39:58.390319+00:00",
+      "usage_count": 0,
+      "success_rate": 0.0,
+      "is_active": true
+    },
+    "auth-frontend-engineer": {
+      "agent_id": "auth-frontend-engineer",
+      "name": "认证与权限前端专家",
+      "domains": [
+        "security",
+        "frontend"
+      ],
+      "skills": [
+        "state-management",
+        "react",
+        "vue",
+        "security",
+        "frontend",
+        "routing"
+      ],
+      "tags": [
+        "auth-ui",
+        "dynamic-routing",
+        "role-based-access",
+        "jwt-storage",
+        "menu-permission"
+      ],
+      "manifest_path": "deliverables/agents/auth-frontend-engineer/manifest.json",
+      "created_by": "llm",
+      "created_at": "2025-12-31T10:40:05.403504+00:00",
+      "usage_count": 0,
+      "success_rate": 0.0,
+      "is_active": true
+    },
+    "member-management-backend-specialist": {
+      "agent_id": "member-management-backend-specialist",
+      "name": "会员管理系统后端专家",
+      "domains": [
+        "backend"
+      ],
+      "skills": [
+        "data-validation",
+        "api",
+        "crud",
+        "backend",
+        "member-logic"
+      ],
+      "tags": [
+        "membership-api",
+        "crud",
+        "member-card-binding",
+        "expiration-logic"
+      ],
+      "manifest_path": "deliverables/agents/member-management-backend-specialist/manifest.json",
+      "created_by": "llm",
+      "created_at": "2025-12-31T11:14:47.908602+00:00",
+      "usage_count": 0,
+      "success_rate": 0.0,
+      "is_active": true
+    },
+    "billing-db-developer": {
+      "agent_id": "billing-db-developer",
+      "name": "计费数据库开发专家",
+      "domains": [
+        "backend",
+        "specialist"
+      ],
+      "skills": [
+        "database",
+        "transactions",
+        "schema-design",
+        "api",
+        "sql",
+        "data-modeling",
+        "backend"
+      ],
+      "tags": [
+        "mysql",
+        "postgres",
+        "database-modeling",
+        "billing-schema",
+        "financial-data-integrity"
+      ],
+      "manifest_path": "deliverables/agents/billing-db-developer/manifest.json",
+      "created_by": "llm",
+      "created_at": "2025-12-31T11:15:00.494179+00:00",
+      "usage_count": 0,
+      "success_rate": 0.0,
+      "is_active": true
+    },
+    "course-schedule-backend-specialist": {
+      "agent_id": "course-schedule-backend-specialist",
+      "name": "课程排班后端专家",
+      "domains": [
+        "backend"
+      ],
+      "skills": [
+        "database-transactions",
+        "api",
+        "concurrency",
+        "python",
+        "backend"
+      ],
+      "tags": [
+        "scheduling",
+        "inventory-management",
+        "course-crud",
+        "capacity-limits",
+        "optimistic-lock"
+      ],
+      "manifest_path": "deliverables/agents/course-schedule-backend-specialist/manifest.json",
+      "created_by": "llm",
+      "created_at": "2025-12-31T21:14:02.240158+00:00",
+      "usage_count": 0,
+      "success_rate": 0.0,
+      "is_active": true
+    },
+    "member-database-designer": {
+      "agent_id": "member-database-designer",
+      "name": "会员系统数据库设计专家",
+      "domains": [
+        "backend",
+        "specialist"
+      ],
+      "skills": [
+        "schema-design",
+        "indexing",
+        "sql",
+        "api",
+        "triggers",
+        "database",
+        "database-modeling",
+        "backend"
+      ],
+      "tags": [
+        "member-schema",
+        "card-binding",
+        "data-modeling",
+        "normalization",
+        "mysql",
+        "postgresql"
+      ],
+      "manifest_path": "deliverables/agents/member-database-designer/manifest.json",
+      "created_by": "llm",
+      "created_at": "2026-01-01T04:21:23.005859+00:00",
+      "usage_count": 0,
+      "success_rate": 0.0,
+      "is_active": true
+    },
+    "vue3-frontend-specialist": {
+      "agent_id": "vue3-frontend-specialist",
+      "name": "Vue3前端架构专家",
+      "domains": [
+        "frontend"
+      ],
+      "skills": [
+        "vue-router",
+        "pinia",
+        "frontend",
+        "vue",
+        "element-plus",
+        "vite",
+        "typescript"
+      ],
+      "tags": [
+        "vue3",
+        "vite",
+        "typescript",
+        "element-plus",
+        "scaffold",
+        "layout"
+      ],
+      "manifest_path": "deliverables/agents/vue3-frontend-specialist/manifest.json",
+      "created_by": "llm",
+      "created_at": "2026-01-01T04:21:50.087391+00:00",
+      "usage_count": 0,
+      "success_rate": 0.0,
+      "is_active": true
+    }
+  },
+  "tags": {
+    "python": {
+      "name": "python",
+      "category": "skill",
+      "usage_count": 1
+    },
+    "api": {
+      "name": "api",
+      "category": "skill",
+      "usage_count": 1
+    },
+    "rest": {
+      "name": "rest",
+      "category": "skill",
+      "usage_count": 1
+    },
+    "orm": {
+      "name": "orm",
+      "category": "skill",
+      "usage_count": 1
+    },
+    "sqlalchemy": {
+      "name": "sqlalchemy",
+      "category": "skill",
+      "usage_count": 1
+    },
+    "fastapi": {
+      "name": "fastapi",
+      "category": "skill",
+      "usage_count": 1
+    },
+    "flask": {
+      "name": "flask",
+      "category": "skill",
+      "usage_count": 1
+    },
+    "api-testing": {
+      "name": "api-testing",
+      "category": "skill",
+      "usage_count": 1
+    },
+    "authentication": {
+      "name": "authentication",
+      "category": "skill",
+      "usage_count": 1
+    },
+    "authorization": {
+      "name": "authorization",
+      "category": "skill",
+      "usage_count": 1
+    },
+    "security-audit": {
+      "name": "security-audit",
+      "category": "skill",
+      "usage_count": 1
+    },
+    "owasp-top-10": {
+      "name": "owasp-top-10",
+      "category": "skill",
+      "usage_count": 1
+    },
+    "calendar-ui": {
+      "name": "calendar-ui",
+      "category": "skill",
+      "usage_count": 1
+    },
+    "booking-system": {
+      "name": "booking-system",
+      "category": "skill",
+      "usage_count": 1
+    },
+    "user-flow": {
+      "name": "user-flow",
+      "category": "skill",
+      "usage_count": 1
+    },
+    "interaction": {
+      "name": "interaction",
+      "category": "skill",
+      "usage_count": 1
+    },
+    "wireframe": {
+      "name": "wireframe",
+      "category": "skill",
+      "usage_count": 1
+    },
+    "schema-design": {
+      "name": "schema-design",
+      "category": "skill",
+      "usage_count": 2
+    },
+    "mysql": {
+      "name": "mysql",
+      "category": "skill",
+      "usage_count": 4
+    },
+    "postgresql": {
+      "name": "postgresql",
+      "category": "skill",
+      "usage_count": 2
+    },
+    "normalization": {
+      "name": "normalization",
+      "category": "skill",
+      "usage_count": 2
+    },
+    "security-strategy": {
+      "name": "security-strategy",
+      "category": "skill",
+      "usage_count": 1
+    },
+    "billing": {
+      "name": "billing",
+      "category": "skill",
+      "usage_count": 1
+    },
+    "system-design": {
+      "name": "system-design",
+      "category": "skill",
+      "usage_count": 1
+    },
+    "booking-ui": {
+      "name": "booking-ui",
+      "category": "skill",
+      "usage_count": 1
+    },
+    "billing-frontend": {
+      "name": "billing-frontend",
+      "category": "skill",
+      "usage_count": 1
+    },
+    "conflict-handling": {
+      "name": "conflict-handling",
+      "category": "skill",
+      "usage_count": 1
+    },
+    "data-tables": {
+      "name": "data-tables",
+      "category": "skill",
+      "usage_count": 1
+    },
+    "member-portal": {
+      "name": "member-portal",
+      "category": "skill",
+      "usage_count": 1
+    },
+    "postgres": {
+      "name": "postgres",
+      "category": "skill",
+      "usage_count": 2
+    },
+    "schema-migration": {
+      "name": "schema-migration",
+      "category": "skill",
+      "usage_count": 1
+    },
+    "database-setup": {
+      "name": "database-setup",
+      "category": "skill",
+      "usage_count": 1
+    },
+    "environment-config": {
+      "name": "environment-config",
+      "category": "skill",
+      "usage_count": 1
+    },
+    "locking": {
+      "name": "locking",
+      "category": "skill",
+      "usage_count": 1
+    },
+    "pessimistic-lock": {
+      "name": "pessimistic-lock",
+      "category": "skill",
+      "usage_count": 1
+    },
+    "optimistic-lock": {
+      "name": "optimistic-lock",
+      "category": "skill",
+      "usage_count": 2
+    },
+    "race-condition": {
+      "name": "race-condition",
+      "category": "skill",
+      "usage_count": 1
+    },
+    "inventory-management": {
+      "name": "inventory-management",
+      "category": "skill",
+      "usage_count": 2
+    },
+    "transaction-safety": {
+      "name": "transaction-safety",
+      "category": "skill",
+      "usage_count": 1
+    },
+    "concurrency-testing": {
+      "name": "concurrency-testing",
+      "category": "skill",
+      "usage_count": 1
+    },
+    "race-condition-test": {
+      "name": "race-condition-test",
+      "category": "skill",
+      "usage_count": 1
+    },
+    "api-automation": {
+      "name": "api-automation",
+      "category": "skill",
+      "usage_count": 1
+    },
+    "stress-test": {
+      "name": "stress-test",
+      "category": "skill",
+      "usage_count": 1
+    },
+    "logic-verification": {
+      "name": "logic-verification",
+      "category": "skill",
+      "usage_count": 1
+    },
+    "jwt": {
+      "name": "jwt",
+      "category": "skill",
+      "usage_count": 1
+    },
+    "oauth2": {
+      "name": "oauth2",
+      "category": "skill",
+      "usage_count": 1
+    },
+    "login-api": {
+      "name": "login-api",
+      "category": "skill",
+      "usage_count": 1
+    },
+    "session-management": {
+      "name": "session-management",
+      "category": "skill",
+      "usage_count": 1
+    },
+    "access-control": {
+      "name": "access-control",
+      "category": "skill",
+      "usage_count": 1
+    },
+    "auth-ui": {
+      "name": "auth-ui",
+      "category": "skill",
+      "usage_count": 1
+    },
+    "dynamic-routing": {
+      "name": "dynamic-routing",
+      "category": "skill",
+      "usage_count": 1
+    },
+    "role-based-access": {
+      "name": "role-based-access",
+      "category": "skill",
+      "usage_count": 1
+    },
+    "jwt-storage": {
+      "name": "jwt-storage",
+      "category": "skill",
+      "usage_count": 1
+    },
+    "menu-permission": {
+      "name": "menu-permission",
+      "category": "skill",
+      "usage_count": 1
+    },
+    "membership-api": {
+      "name": "membership-api",
+      "category": "skill",
+      "usage_count": 1
+    },
+    "crud": {
+      "name": "crud",
+      "category": "skill",
+      "usage_count": 1
+    },
+    "member-card-binding": {
+      "name": "member-card-binding",
+      "category": "skill",
+      "usage_count": 1
+    },
+    "expiration-logic": {
+      "name": "expiration-logic",
+      "category": "skill",
+      "usage_count": 1
+    },
+    "database-modeling": {
+      "name": "database-modeling",
+      "category": "skill",
+      "usage_count": 1
+    },
+    "billing-schema": {
+      "name": "billing-schema",
+      "category": "skill",
+      "usage_count": 1
+    },
+    "financial-data-integrity": {
+      "name": "financial-data-integrity",
+      "category": "skill",
+      "usage_count": 1
+    },
+    "scheduling": {
+      "name": "scheduling",
+      "category": "skill",
+      "usage_count": 1
+    },
+    "course-crud": {
+      "name": "course-crud",
+      "category": "skill",
+      "usage_count": 1
+    },
+    "capacity-limits": {
+      "name": "capacity-limits",
+      "category": "skill",
+      "usage_count": 1
+    },
+    "member-schema": {
+      "name": "member-schema",
+      "category": "skill",
+      "usage_count": 1
+    },
+    "card-binding": {
+      "name": "card-binding",
+      "category": "skill",
+      "usage_count": 1
+    },
+    "data-modeling": {
+      "name": "data-modeling",
+      "category": "skill",
+      "usage_count": 1
+    },
+    "vue3": {
+      "name": "vue3",
+      "category": "skill",
+      "usage_count": 1
+    },
+    "vite": {
+      "name": "vite",
+      "category": "skill",
+      "usage_count": 1
+    },
+    "typescript": {
+      "name": "typescript",
+      "category": "skill",
+      "usage_count": 1
+    },
+    "element-plus": {
+      "name": "element-plus",
+      "category": "skill",
+      "usage_count": 1
+    },
+    "scaffold": {
+      "name": "scaffold",
+      "category": "skill",
+      "usage_count": 1
+    },
+    "layout": {
+      "name": "layout",
+      "category": "skill",
+      "usage_count": 1
+    }
+  }
+}

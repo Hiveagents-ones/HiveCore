@@ -1,0 +1,54 @@
+{
+  "agent_id": "python-backend-builder",
+  "name": "Python后端开发专家",
+  "memory": {
+    "context_limit": 20,
+    "short_term_limit": 50,
+    "long_term": []
+  },
+  "knowledge": {
+    "documents": [
+      {
+        "content": "健身房管理系统\n本项目为基于SpringBoot的健身房管理系统，包含程序、源码、数据库、论文等资料，可通过私信获取。系统运行环境需JDK1.8、Tomcat、MySQL等，技术栈包括SpringBoot、MyBatis、Maven等。系统分为管理员、教练、会员三类用户，管理员具备最高权限，负责系统管理；教练可管理课程、预约、考勤等；会员可进行预约、评价等操作。系统功能包括个人信息管理、课程预约、评价管理等。数据库设计遵循范式要求，采用E-R图进行概念设计，包含会员、员工、教练、公告等实体属性。系统结构分为管理员、教练、会员三个模块，实现首页、个人中心、预约管理、评价管理等功能，界面清晰，操作便捷。",
+        "source": "https://www.bilibili.com/read/cv26477366",
+        "metadata": {}
+      },
+      {
+        "content": "健身房管理系统开发研究\n二、项目目标\n本项目旨在设计并实现一个集会员管理、课程预约、费用结算、数据分析等功能于一体的健身房管理系统。\n具体目标包括：\n- 实现会员信息的电子化存储与快速查询，提高管理效率。\n- 提供在线课程预约功能，方便会员根据自身需求灵活安排锻炼计划。\n- 支持多种支付方式，简化费用结算流程，提升财务处理效率。\n- 通过数据分析，为健身房管理者提供决策支持，优化资源配置。\n三、技术路线与实现方案\n本项目将采用B/S架构，前端使用HTML、CSS、JavaScript等技术构建用户界面，后端采用Java或Python等语言结合Spring Boot或Django等框架进行开发。\n数据库选用MySQL或MongoDB等关系型或非关系型数据库，确保数据的安全性与可扩展性。\n同时，将利用Ajax实现前后端异步交互，提升用户体验。",
+        "source": "https://blog.csdn.net/CK3040/article/details/141813309",
+        "metadata": {}
+      },
+      {
+        "content": "设计健身房管理系统需要考虑会员管理、预约安排、设备维护、财务管理等多个模块\n3. 数据库设计\n数据库表设计包括以下主要表：\n- 会员表：记录会员的基本信息、会员卡类型和状态。\n- 课程表：课程名称、时间、教练、参与人数、难度等。\n- 预约表：会员ID、课程ID、预约时间等。\n- 设备表：设备编号、类型、状态、维护记录等。\n- 财务表：交易编号、交易类型、金额、支付方式等。\n4. 技术选型\n- 前端：React、Vue.js（Web端）；Flutter、React Native（移动端）。\n- 后端：Spring Boot、Django或Express。\n- 数据库：MySQL、PostgreSQL或MongoDB。\n- 部署与安全：采用云服务器（如AWS、阿里云）进行部署，数据加密和权限管理确保数据安全。",
+        "source": "https://blog.csdn.net/WX_BYSJ1992/article/details/143238097",
+        "metadata": {}
+      },
+      {
+        "content": "Gym Management System Project using React JS and Spring Boot and MySQL\n本项目是一个基于React JS、Spring Boot和MySQL的健身房管理系统。该项目为计算机科学、信息技术等专业学生及研究生提供学习资源，可用于毕业设计或实习项目。系统分为管理员模块和会员模块，功能包括用户认证、添加教练、添加套餐、会员注册与登录、会员信息查看与更新、会员卡管理等。管理员可查看所有会员信息，会员可查看自己的会员信息、BMI计算、修改密码等。此外，项目还提供其他多个基于React和Spring Boot的实战项目，如员工管理系统、医院管理系统等。如需项目源码及配置，可联系作者获取。",
+        "source": "https://www.codewithmurad.com/2022/11/gym-management-system-using-reactjs-springboot.html",
+        "metadata": {}
+      },
+      {
+        "content": "如何为健身管理系统构建数据库架构？\n- 教练： 维护教练的详细档案，包括他们的联系信息和专业认证。\n- 会员资格： 记录提供的各种会员计划，捕捉类型、持续时间和相关费用。\n- 课程： 安排和记录团体课程或个人训练课程，详细说明课程类型、日期和持续时间。\n- 付款： 监控会员为会员资格和相关服务所进行的财务交易。\n识别这些元素及其相互关系对于构建安全和高性能的后端至关重要。",
+        "source": "https://www.back4app.com/tutorials-cn/how-to-build-a-database-schema-for-a-gym-management-system",
+        "metadata": {}
+      },
+      {
+        "content": "{'type': 'text', 'text': '[1] 健身房管理系统\\n本项目为基于SpringBoot的健身房管理系统，包含程序、源码、数据库、论文等资料，可通过私信获取。系统运行环境需JDK1.8、Tomcat、MySQL等，技术栈包括SpringBoot、MyBatis、Maven等。系统分为管理员、教练、会员三类用户，管理员具备最高权限，负责系统管理；教练可管理课程、预约、考勤等；会员可进行预约、评价等操作。系统功能包括个人信息管理、课程预约、评价管理等。数据库设计遵循范式要求，采用E-R图进行概念设计，包含会员、员工、教练、公告等实体属性。系统结构分为管理员、教练、会员三个模块，实现首页、个人中心、预约管理、评价管理等功能，界面清晰，操作便捷。\\nhttps://www.bilibili.com/read/cv26477366\\n\\n[2] 健身房管理系统开发研究\\n二、项目目标\\n本项目旨在设计并实现一个集会员管理、课程预约、费用结算、数据分析等功能于一体的健身房管理系统。\\n具体目标包括：\\n- 实现会员信息的电子化存储与快速查询，提高管理效率。\\n- 提供在线课程预约功能，方便会员根据自身需求灵活安排锻炼计划。\\n- 支持多种支付方式，简化费用结算流程，提升财务处理效率。\\n- 通过数据分析，为健身房管理者提供决策支持，优化资源配置。\\n三、技术路线与实现方案\\n本项目将采用B/S架构，前端使用HTML、CSS、JavaScript等技术构建用户界面，后端采用Java或Python等语言结合Spring Boot或Django等框架进行开发。\\n数据库选用MySQL或MongoDB等关系型或非关系型数据库，确保数据的安全性与可扩展性。\\n同时，将利用Ajax实现前后端异步交互，提升用户体验。\\nhttps://blog.csdn.net/CK3040/article/details/141813309\\n\\n[3] 设计健身房管理系统需要考虑会员管理、预约安排、设备维护、财务管理等多个模块\\n3. 数据库设计\\n数据库表设计包括以下主要表：\\n- 会员表：记录会员的基本信息、会员卡类型和状态。\\n- 课程表：课程名称、时间、教练、参与人数、难度等。\\n- 预约表：会员ID、课程ID、预约时间等。\\n- 设备表：设备编号、类型、状态、维护记录等。\\n- 财务表：交易编号、交易类型、金额、支付方式等。\\n4. 技术选型\\n- 前端：React、Vue.js（Web端）；Flutter、React Native（移动端）。\\n- 后端：Spring Boot、Django或Express。\\n- 数据库：MySQL、PostgreSQL或MongoDB。\\n- 部署与安全：采用云服务器（如AWS、阿里云）进行部署，数据加密和权限管理确保数据安全。\\nhttps://blog.csdn.net/WX_BYSJ1992/article/details/143238097\\n\\n[4] Gym Management System Project using React JS and Spring Boot and MySQL\\n本项目是一个基于React JS、Spring Boot和MySQL的健身房管理系统。该项目为计算机科学、信息技术等专业学生及研究生提供学习资源，可用于毕业设计或实习项目。系统分为管理员模块和会员模块，功能包括用户认证、添加教练、添加套餐、会员注册与登录、会员信息查看与更新、会员卡管理等。管理员可查看所有会员信息，会员可查看自己的会员信息、BMI计算、修改密码等。此外，项目还提供其他多个基于React和Spring Boot的实战项目，如员工管理系统、医院管理系统等。如需项目源码及配置，可联系作者获取。\\nhttps://www.codewithmurad.com/2022/11/gym-management-system-using-reactjs-springboot.html\\n\\n[5] 如何为健身管理系统构建数据库架构？\\n- 教练： 维护教练的详细档案，包括他们的联系信息和专业认证。\\n- 会员资格： 记录提供的各种会员计划，捕捉类型、持续时间和相关费用。\\n- 课程： 安排和记录团体课程或个人训练课程，详细说明课程类型、日期和持续时间。\\n- 付款： 监控会员为会员资格和相关服务所进行的财务交易。\\n识别这些元素及其相互关系对于构建安全和高性能的后端至关重要。\\nhttps://www.back4app.com/tutorials-cn/how-to-build-a-database-schema-for-a-gym-management-system'}",
+        "source": "metaso_summary",
+        "metadata": {}
+      }
+    ]
+  },
+  "task_board": {
+    "max_history": 100,
+    "current_task": null
+  },
+  "prompt": {
+    "system_prompt": "你是一个Python后端开发专家，负责搭建基于FastAPI或Flask的项目框架，配置数据库连接与ORM，并确保基础项目结构的规范性与可扩展性。",
+    "role_description": "",
+    "deliverable_expectation": "",
+    "collaboration_guidelines": [],
+    "variables": {}
+  }
+}
