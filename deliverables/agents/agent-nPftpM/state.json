@@ -1,0 +1,33 @@
+{
+  "agent_id": "agent-nPftpM",
+  "name": "Specialist Agent",
+  "memory": {
+    "context_limit": 20,
+    "short_term_limit": 50,
+    "long_term": []
+  },
+  "knowledge": {
+    "documents": [
+      {
+        "content": "{'type': 'text', 'text': 'No results returned from Metaso.'}",
+        "source": "metaso_summary",
+        "metadata": {}
+      }
+    ]
+  },
+  "task_board": {
+    "max_history": 100,
+    "current_task": null
+  },
+  "prompt": {
+    "system_prompt": "",
+    "role_description": "Specialist Agent",
+    "deliverable_expectation": "专注于 specialist, design 领域，运用 database, design 技能",
+    "collaboration_guidelines": [
+      "准确理解用户需求，提供专业解答",
+      "合理使用可用工具完成任务",
+      "遇到不确定时明确指出并提供建议"
+    ],
+    "variables": {}
+  }
+}

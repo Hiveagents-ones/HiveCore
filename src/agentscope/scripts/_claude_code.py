@@ -325,8 +325,12 @@ async def claude_code_edit(
         `ToolResponse`:
             The result of the Claude Code execution.
     """
-    # Check if we should run in container mode
-    container_id, container_workspace, is_ecs_mode = get_container_context()
+    # Rate limit API calls to prevent 429 errors
+    from ._api_scheduler import zhipu_rate_limit
+
+    async with zhipu_rate_limit("claude_code"):
+        # Check if we should run in container mode
+        container_id, container_workspace, is_ecs_mode = get_container_context()
 
     # Use global agent_id if not provided as argument
     effective_agent_id = agent_id or get_current_agent_id()

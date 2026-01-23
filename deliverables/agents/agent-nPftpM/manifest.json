@@ -1,0 +1,44 @@
+{
+  "id": "agent-nPftpM",
+  "name": "Specialist Agent",
+  "version": "1.0.0",
+  "profile": {
+    "skills": [
+      "database",
+      "design"
+    ],
+    "tools": [],
+    "domains": [
+      "specialist",
+      "design"
+    ],
+    "languages": [
+      "en",
+      "zh"
+    ]
+  },
+  "mcp_servers": {},
+  "builtin_tools": [],
+  "factory": null,
+  "description": "Specialist Agent: database, design",
+  "metadata": {
+    "source": "modular_agent_factory",
+    "created_at": "2026-01-21T16:17:43.300136+00:00",
+    "utterance": "{\n  \"initial_requirement\": \"创建一个简单的待办事项管理应用\",\n  \"summary\": \"一个基于Web的轻量级待办事项管理应用，支持用户创建、编辑、删除及标记任务完成状态，并提供基础的分类管理功能。\",\n  \"requirements\": [\n    {\n      \"id\": \"REQ-001\",\n      \"title\": \"数据库模型设计与初始化\",\n      \"summary\": \"设计待办事项表结构，包含字段：ID、标题、描述、截止日期、优先级、完成状态、创建时间及更新时间。编写数据库迁移脚本。\",\n      \"category\": \"database\",\n      \"priority\": \"high\",\n      \"depends_on\": []\n    },\n    {\n      \"id\": \"REQ-002\",\n      \"title\": \"任务管理 API 开发\",\n      \"summary\": \"开发后端 RESTful API 接口，包括创建任务、获取任务列表、更新任务详情、删除任务以及切换任务完成状态。\",\n      \"category\": \"backend\",\n      \"priority\": \"high\",\n      \"depends_on\": [\n        \"REQ-001\"\n      ]\n    },\n    {\n      \"id\": \"REQ-003\",\n      \"title\": \"UI/UX 原型设计\",\n      \"summary\": \"设计应用界面原型，包括任务列表视图、添加/编辑任务模态框及操作按钮布局，确保交互流程清晰。\",\n      \"category\": \"ui\",\n      \"priority\": \"medium\",\n      \"depends_on\": []\n    },\n    {\n      \"id\": \"REQ-004\",\n      \"title\": \"前端基础架构搭建\",\n      \"summary\": \"初始化前端项目，配置路由、状态管理及HTTP请求库，搭建基础页面布局框架。\",\n      \"category\": \"frontend\",\n      \"priority\": \"high\",\n      \"depends_on\": []\n    },\n    {\n      \"id\": \"REQ-005\",\n      \"title\": \"任务列表与状态管理实现\",\n      \"summary\": \"实现任务列表展示组件，支持查看任务详情，并完成“标记完成/未完成”的交互逻辑及API联调。\",\n      \"category\": \"frontend\",\n      \"priority\": \"high\",\n      \"depends_on\": [\n        \"REQ-004\",\n        \"REQ-002\",\n        \"REQ-003\"\n      ]\n    },\n    {\n      \"id\": \"REQ-006\",\n      \"title\": \"任务创建与编辑功能实现\",\n      \"summary\": \"实现新建任务和编辑任务的表单界面，包含输入校验，并与后端API完成数据交互。\",\n      \"category\": \"frontend\",\n      \"priority\": \"medium\",\n      \"depends_on\": [\n        \"REQ-005\"\n      ]\n    },\n    {\n      \"id\": \"REQ-007\",\n      \"title\": \"任务删除功能实现\",\n      \"summary\": \"在任务列表项中添加删除按钮，实现二次确认机制并调用后端API删除数据。\",\n      \"category\": \"frontend\",\n      \"priority\": \"medium\",\n      \"depends_on\": [\n        \"REQ-005\"\n      ]\n    }\n  ]\n}",
+    "knowledge_count": 1,
+    "tags": [],
+    "parent_domain": null
+  },
+  "prompt_config": {
+    "system_prompt": "",
+    "role_description": "Specialist Agent",
+    "deliverable_expectation": "专注于 specialist, design 领域，运用 database, design 技能",
+    "collaboration_guidelines": [
+      "准确理解用户需求，提供专业解答",
+      "合理使用可用工具完成任务",
+      "遇到不确定时明确指出并提供建议"
+    ],
+    "prompt_template": "",
+    "variables": {}
+  }
+}

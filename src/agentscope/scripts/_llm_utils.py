@@ -9,9 +9,12 @@ This module provides:
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 def extract_text_from_response(resp: Any) -> str:
@@ -364,8 +367,12 @@ async def call_llm_raw(
             start_time = observer.on_call_start(label, len(messages))
 
         try:
-            # OpenAIChatModel.__call__ is async, so await it directly
-            resp = await llm(messages, temperature=temperature)
+            # Rate limit API calls to prevent 429 errors
+            from ._api_scheduler import zhipu_rate_limit
+
+            async with zhipu_rate_limit(label or "agent_llm"):
+                # OpenAIChatModel.__call__ is async, so await it directly
+                resp = await llm(messages, temperature=temperature)
             text = extract_text_from_response(resp)
 
             # Track token usage if available
@@ -393,7 +400,18 @@ async def call_llm_raw(
             if verbose:
                 observer.on_call_error(label, exc, attempt + 1, retries)
             if attempt < retries - 1:
-                await asyncio.sleep(1.5 * (attempt + 1))
+                # Longer backoff for 429 rate limit errors
+                is_rate_limit = "429" in str(exc) or "rate" in str(exc).lower()
+                if is_rate_limit:
+                    wait_time = 10.0 * (attempt + 1)  # 10s, 20s, 30s...
+                    logger.warning(
+                        "[call_llm_raw] Rate limit hit, waiting %.1fs (attempt=%d)",
+                        wait_time,
+                        attempt + 1,
+                    )
+                else:
+                    wait_time = 1.5 * (attempt + 1)
+                await asyncio.sleep(wait_time)
 
     raise RuntimeError(f"LLM 调用失败 ({label}): {last_err}")
 

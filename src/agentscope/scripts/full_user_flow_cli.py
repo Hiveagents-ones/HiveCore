@@ -74,6 +74,65 @@ from ._sandbox import (
     run_browser_sandbox_test,
 )
 from ._runtime_workspace import RuntimeWorkspaceWithPR
+
+
+def _is_ecs_environment() -> bool:
+    """Check if running in AWS ECS environment.
+
+    Returns:
+        `bool`: True if should use ECS runtime.
+    """
+    use_aws = os.environ.get("USE_AWS", "").lower() == "true"
+    environment = os.environ.get("ENVIRONMENT", "")
+    return use_aws and environment == "aws_ecs"
+
+
+def _get_ecs_runtime_workspace(
+    use_pr_mode: bool,
+    workspace_dir: Path,
+    obs_ctx: Any,
+) -> Any:
+    """Create ECS-based RuntimeWorkspace.
+
+    Args:
+        use_pr_mode (`bool`): Whether to use PR mode.
+        workspace_dir (`Path`): Local workspace directory.
+        obs_ctx: Observation context for logging.
+
+    Returns:
+        ECSRuntimeWorkspace instance.
+    """
+    from ..ones.runtime.ecs_runtime import ECSRuntimeWorkspace
+
+    # Load ECS configuration from environment
+    cluster = os.environ.get("ECS_CLUSTER", "hivecore-cluster")
+    task_definition = os.environ.get(
+        "ECS_TASK_DEFINITION", "hivecore-runtime:latest"
+    )
+    region = os.environ.get("AWS_REGION", "ap-northeast-1")
+
+    # Parse subnet and security group IDs
+    subnet_ids_str = os.environ.get("ECS_SUBNET_IDS", "")
+    subnet_ids = [s.strip() for s in subnet_ids_str.split(",") if s.strip()]
+
+    sg_ids_str = os.environ.get("ECS_SECURITY_GROUP_IDS", "")
+    security_group_ids = [s.strip() for s in sg_ids_str.split(",") if s.strip()]
+
+    obs_ctx.logger.info(
+        f"[CLI] 使用 ECS Runtime: cluster={cluster}, "
+        f"task={task_definition}, region={region}"
+    )
+
+    return ECSRuntimeWorkspace(
+        cluster=cluster,
+        task_definition=task_definition,
+        region=region,
+        subnet_ids=subnet_ids if subnet_ids else None,
+        security_group_ids=security_group_ids if security_group_ids else None,
+        base_workspace_dir="/workspace",
+        timeout=600,
+        enable_pr_mode=use_pr_mode,
+    )
 from ._validation import (
     CodeValidationResult,
     layered_code_validation,

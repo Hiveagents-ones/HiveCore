@@ -2180,7 +2180,7 @@ def get_agent_react_observer() -> AgentReActObserver:
 class ClaudeCodeObserver:
     """Observer for Claude Code execution.
 
-    Provides real-time logging during Claude Code CLI execution.
+    Provides real-time logging and SSE event publishing during Claude Code CLI execution.
     """
 
     def __init__(self, ctx: ObservabilityContext | None = None):
@@ -2191,21 +2191,208 @@ class ClaudeCodeObserver:
         """
         self._ctx = ctx
         self._current_agent: str | None = None
+        self._current_agent_name: str | None = None
         self._message_count: int = 0
+        # SSE context for publishing events
+        self._execution_round_id: str | None = None
+        self._tenant_id: str | None = None
+        # Track pending tool calls for matching with results
+        self._pending_tools: dict[str, dict] = {}  # tool_use_id -> {name, input, start_time}
 
     @property
     def ctx(self) -> ObservabilityContext:
         """Get observability context."""
         return self._ctx or get_context()
 
-    def set_agent(self, agent_id: str) -> None:
+    def set_agent(self, agent_id: str, agent_name: str | None = None) -> None:
         """Set current agent for logging context.
 
         Args:
             agent_id: Agent identifier
+            agent_name: Human-readable agent name (optional)
         """
         self._current_agent = agent_id
+        self._current_agent_name = agent_name or agent_id
         self._message_count = 0
+        self._pending_tools.clear()
+
+    def set_sse_context(
+        self,
+        execution_round_id: str | None,
+        tenant_id: str | None,
+    ) -> None:
+        """Set SSE publishing context.
+
+        When set, tool call events will be published to Redis SSE
+        for real-time frontend display.
+
+        Args:
+            execution_round_id: Execution round UUID
+            tenant_id: Tenant UUID
+        """
+        self._execution_round_id = execution_round_id
+        self._tenant_id = tenant_id
+
+    def _publish_tool_event(
+        self,
+        tool_name: str,
+        tool_input: dict | None = None,
+        tool_output: str = "",
+        success: bool = True,
+        duration_ms: float = 0,
+        event_subtype: str = "tool_call",
+    ) -> None:
+        """Publish tool event to SSE if context is set.
+
+        Args:
+            tool_name: Name of the tool
+            tool_input: Tool input parameters
+            tool_output: Tool output (for results)
+            success: Whether tool call succeeded
+            duration_ms: Execution duration
+            event_subtype: 'tool_call' or 'tool_result'
+        """
+        if not self._execution_round_id or not self._tenant_id:
+            self.ctx.logger.debug(
+                f"[ClaudeCodeObserver] _publish_tool_event: SSE context not set, "
+                f"skipping {tool_name} ({event_subtype})"
+            )
+            return
+
+        try:
+            # Import here to avoid circular imports
+            import sys
+            if "observability.pubsub" in sys.modules:
+                from observability.pubsub import publish_tool_event
+            else:
+                # Try direct import
+                try:
+                    from observability.pubsub import publish_tool_event
+                except ImportError:
+                    return
+
+            publish_tool_event(
+                execution_round_id=self._execution_round_id,
+                tenant_id=self._tenant_id,
+                tool_name=tool_name,
+                agent_id=self._current_agent or "",
+                agent_name=self._current_agent_name or "",
+                tool_input=tool_input,
+                tool_output=tool_output,
+                success=success,
+                duration_ms=duration_ms,
+                event_subtype=event_subtype,
+            )
+            self.ctx.logger.info(
+                f"[ClaudeCodeObserver] Published tool event: {tool_name} ({event_subtype})"
+            )
+        except Exception as e:
+            # Don't let SSE publishing failures break execution
+            self.ctx.logger.debug(f"[ClaudeCodeObserver] Failed to publish SSE event: {e}")
+
+    def _publish_thinking_event(
+        self,
+        thinking_content: str,
+        thinking_type: str = 'reasoning',
+    ) -> None:
+        """Publish thinking event to SSE for display in thinking history panel.
+
+        Args:
+            thinking_content: The thinking/reasoning content from Claude.
+            thinking_type: Type of thinking - 'extended_thinking' for real Claude thinking,
+                          'text_response' for visible text response, 'reasoning' for general.
+        """
+        if not self._execution_round_id or not self._tenant_id:
+            return
+        if not thinking_content or len(thinking_content.strip()) < 20:
+            return
+
+        try:
+            import sys
+            if "observability.pubsub" in sys.modules:
+                from observability.pubsub import publish_thinking_event
+            else:
+                try:
+                    from observability.pubsub import publish_thinking_event
+                except ImportError:
+                    return
+
+            publish_thinking_event(
+                execution_round_id=self._execution_round_id,
+                tenant_id=self._tenant_id,
+                agent_name=self._current_agent_name or "",
+                thinking_content=thinking_content,
+                agent_id=self._current_agent,
+                thinking_type=thinking_type,
+            )
+        except Exception as e:
+            self.ctx.logger.debug(f"[ClaudeCodeObserver] Failed to publish thinking: {e}")
+
+    def _publish_task_board_event(self, tool_input: dict) -> None:
+        """Publish task board event when TodoWrite or task_board_write is called.
+
+        Args:
+            tool_input: Tool input containing 'todos' list.
+        """
+        self.ctx.logger.info(
+            f"[ClaudeCodeObserver] _publish_task_board_event called: "
+            f"execution_round_id={self._execution_round_id}, tenant_id={self._tenant_id}"
+        )
+        if not self._execution_round_id or not self._tenant_id:
+            self.ctx.logger.warning(
+                "[ClaudeCodeObserver] SSE context not set, skipping task_board event"
+            )
+            return
+
+        todos = tool_input.get("todos", [])
+        if not todos or not isinstance(todos, list):
+            return
+
+        # Convert todos to standard task format
+        tasks = []
+        for todo in todos:
+            if isinstance(todo, dict):
+                tasks.append({
+                    "task_id": str(len(tasks) + 1),
+                    "description": todo.get("content", ""),
+                    "status": todo.get("status", "pending"),
+                    "activeForm": todo.get("activeForm", todo.get("content", "")),
+                })
+
+        if not tasks:
+            return
+
+        try:
+            import sys
+            if "observability.pubsub" in sys.modules:
+                from observability.pubsub import publish_task_board_event
+            else:
+                try:
+                    from observability.pubsub import publish_task_board_event
+                except ImportError:
+                    return
+
+            # Get project_id from execution round
+            from execution.models import ExecutionRound
+            execution_round = ExecutionRound.objects.filter(
+                id=self._execution_round_id
+            ).first()
+            project_id = str(execution_round.project_id) if execution_round else ""
+
+            publish_task_board_event(
+                execution_round_id=self._execution_round_id,
+                tenant_id=self._tenant_id,
+                project_id=project_id,
+                agent_name=self._current_agent_name or "",
+                tasks=tasks,
+                agent_id=self._current_agent,
+                agent_status='working',
+            )
+            self.ctx.logger.debug(
+                f"[ClaudeCodeObserver] Published task_board event: {len(tasks)} tasks"
+            )
+        except Exception as e:
+            self.ctx.logger.debug(f"[ClaudeCodeObserver] Failed to publish task_board: {e}")
 
     def on_progress(self, msg: dict) -> None:
         """Called for each stream-json message from Claude Code.
@@ -2215,6 +2402,11 @@ class ClaudeCodeObserver:
         """
         self._message_count += 1
         msg_type = msg.get("type", "")
+        # Debug: log that on_progress was called
+        self.ctx.logger.debug(
+            f"[ClaudeCodeObserver] on_progress called: msg_type={msg_type}, "
+            f"count={self._message_count}, sse_context={bool(self._execution_round_id)}"
+        )
         agent_prefix = f"[{self._current_agent}]" if self._current_agent else "[ClaudeCode]"
 
         if msg_type == "assistant":
@@ -2222,21 +2414,91 @@ class ClaudeCodeObserver:
             content = msg.get("message", {}).get("content", [])
             for block in content:
                 if isinstance(block, dict):
-                    if block.get("type") == "text":
-                        text = block.get("text", "")[:100]
+                    # Handle extended thinking block (Claude's real reasoning)
+                    if block.get("type") == "thinking":
+                        thinking = block.get("thinking", "")
+                        if thinking:
+                            # Publish real thinking event (Claude's extended thinking)
+                            self._publish_thinking_event(
+                                thinking,
+                                thinking_type='extended_thinking',
+                            )
+                            # Log preview
+                            thinking_preview = thinking[:100]
+                            self.ctx.logger.info(f"{agent_prefix}     🧠 [Thinking] {thinking_preview}...")
+                    elif block.get("type") == "text":
+                        text = block.get("text", "")
                         if text:
-                            self.ctx.logger.info(f"{agent_prefix}     📝 {text}...")
+                            # Publish text response (Claude's visible response)
+                            self._publish_thinking_event(
+                                text,
+                                thinking_type='text_response',
+                            )
+                            # Log preview
+                            text_preview = text[:100]
+                            self.ctx.logger.info(f"{agent_prefix}     📝 {text_preview}...")
                     elif block.get("type") == "tool_use":
                         tool_name = block.get("name", "unknown")
+                        tool_id = block.get("id", "")
+                        tool_input = block.get("input", {})
                         self.ctx.logger.info(f"{agent_prefix}     🛠️ 调用工具: {tool_name}")
+
+                        # Track pending tool call
+                        self._pending_tools[tool_id] = {
+                            "name": tool_name,
+                            "input": tool_input,
+                            "start_time": time.perf_counter(),
+                        }
+
+                        # Publish tool_call event to SSE
+                        self._publish_tool_event(
+                            tool_name=tool_name,
+                            tool_input=tool_input,
+                            event_subtype="tool_call",
+                        )
+
+                        # Special handling for task board tools
+                        if tool_name in ("TodoWrite", "task_board_write"):
+                            self.ctx.logger.info(
+                                f"[ClaudeCodeObserver] Detected task board tool: {tool_name}, "
+                                f"todos_count={len(tool_input.get('todos', []))}"
+                            )
+                            self._publish_task_board_event(tool_input)
 
         elif msg_type == "user":
             # Tool results from Claude Code
             content = msg.get("message", {}).get("content", [])
             for block in content:
                 if isinstance(block, dict) and block.get("type") == "tool_result":
-                    tool_id = block.get("tool_use_id", "")[:8]
-                    self.ctx.logger.debug(f"{agent_prefix}     ← 工具结果 ({tool_id})")
+                    tool_id = block.get("tool_use_id", "")
+                    is_error = block.get("is_error", False)
+                    result_content = block.get("content", "")
+
+                    # Get corresponding tool call info
+                    tool_info = self._pending_tools.pop(tool_id, None)
+                    if tool_info:
+                        tool_name = tool_info["name"]
+                        duration_ms = (time.perf_counter() - tool_info["start_time"]) * 1000
+
+                        # Truncate result for logging
+                        result_preview = str(result_content)[:80] if result_content else ""
+
+                        status = "✗" if is_error else "✓"
+                        self.ctx.logger.debug(
+                            f"{agent_prefix}     {status} {tool_name} ({duration_ms:.0f}ms): {result_preview}"
+                        )
+
+                        # Publish tool_result event to SSE
+                        self._publish_tool_event(
+                            tool_name=tool_name,
+                            tool_input=tool_info.get("input"),
+                            tool_output=str(result_content)[:500] if result_content else "",
+                            success=not is_error,
+                            duration_ms=duration_ms,
+                            event_subtype="tool_result",
+                        )
+                    else:
+                        self.ctx.logger.debug(f"{agent_prefix}     ← 工具结果 ({tool_id[:8]})")
 
         elif msg_type == "system":
             # System messages
